@@ -367,9 +367,9 @@
         <label class="day-chip"><input type="checkbox" value="5"> Fri</label>
         <label class="day-chip"><input type="checkbox" value="6"> Sat</label>
       </div>
-      <div class="hint">Leave unchecked to keep the video always visible. Otherwise it's only visible to
-        viewers on the checked day(s) each week, hidden the rest of the time, repeating every week until
-        you turn the schedule off.</div>
+      <div class="hint">Leave unchecked to publish right away. Otherwise the video stays hidden until the
+        next checked day of the week — once that day arrives, it's released for good: visible to everyone
+        and permanent, it can no longer be deleted.</div>
     </div>
     <button class="btn-primary" id="uploadBtn" style="align-self: flex-start;">Upload video</button>
   </div>
@@ -683,19 +683,24 @@
 
   const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  function isReleased(video) {
-    if (!video.releaseDays || video.releaseDays.length === 0) return true;
-    return video.releaseDays.includes(new Date().getDay());
+  function getReleaseDate(video) {
+    if (!video.releaseDays || video.releaseDays.length === 0) return null;
+    const start = new Date(video.uploadedAt);
+    start.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      if (video.releaseDays.includes(d.getDay())) return d;
+    }
+    return start;
   }
 
-  function nextReleaseDay(video) {
-    if (!video.releaseDays || video.releaseDays.length === 0) return null;
-    const todayIdx = new Date().getDay();
-    for (let i = 0; i < 7; i++) {
-      const idx = (todayIdx + i) % 7;
-      if (video.releaseDays.includes(idx)) return DAY_NAMES[idx];
-    }
-    return null;
+  function isReleased(video) {
+    const releaseDate = getReleaseDate(video);
+    if (!releaseDate) return true;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today >= releaseDate;
   }
 
   async function renderLibrary() {
@@ -734,7 +739,7 @@
       if (isAdmin && !released) {
         const pill = document.createElement("span");
         pill.className = "pill";
-        pill.textContent = "Hidden today";
+        pill.textContent = "Scheduled";
         titleRow.appendChild(pill);
       }
       body.appendChild(titleRow);
@@ -749,25 +754,23 @@
         const scheduleMeta = document.createElement("div");
         scheduleMeta.className = "meta";
         scheduleMeta.textContent = released
-          ? `Visible: ${dayLabels} (repeats weekly)`
-          : `Visible: ${dayLabels} (repeats weekly) · next on ${nextReleaseDay(v)}`;
+          ? `Released ${formatDate(getReleaseDate(v).getTime())} (scheduled: ${dayLabels})`
+          : `Releases ${formatDate(getReleaseDate(v).getTime())} (${dayLabels}) — visible to everyone from then on`;
         body.appendChild(scheduleMeta);
       }
 
-      if (isAdmin) {
+      if (isAdmin && !released) {
         const row = document.createElement("div");
         row.className = "row";
 
-        if (v.releaseDays && v.releaseDays.length > 0) {
-          const offBtn = document.createElement("button");
-          offBtn.className = "btn-ghost";
-          offBtn.textContent = "Turn off schedule";
-          armConfirmButton(offBtn, async () => {
-            await clearVideoSchedule(v.id);
-            await renderLibrary();
-          });
-          row.appendChild(offBtn);
-        }
+        const releaseNowBtn = document.createElement("button");
+        releaseNowBtn.className = "btn-ghost";
+        releaseNowBtn.textContent = "Release now";
+        armConfirmButton(releaseNowBtn, async () => {
+          await clearVideoSchedule(v.id);
+          await renderLibrary();
+        });
+        row.appendChild(releaseNowBtn);
 
         const delBtn = document.createElement("button");
         delBtn.className = "btn-danger";
