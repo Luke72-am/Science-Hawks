@@ -3,106 +3,513 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chemistry Sim</title>
+<title>Science Hound</title>
 <style>
   :root {
-    --bg: #0f172a;
-    --panel: #1e293b;
-    --accent: #22d3ee;
-    --accent-dark: #0891b2;
-    --text: #e2e8f0;
+    --bg: #f5f6f4;
+    --panel: #ffffff;
+    --text: #1b2420;
+    --muted: #5b665f;
+    --accent: #1f7a6c;
+    --accent-2: #c6702b;
+    --border: #dde2dc;
+    --danger: #b3413a;
   }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101513;
+      --panel: #171e1b;
+      --text: #e7ece8;
+      --muted: #93a099;
+      --accent: #37b8a0;
+      --accent-2: #e08a44;
+      --border: #26302b;
+      --danger: #d97066;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101513;
+    --panel: #171e1b;
+    --text: #e7ece8;
+    --muted: #93a099;
+    --accent: #37b8a0;
+    --accent-2: #e08a44;
+    --border: #26302b;
+    --danger: #d97066;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f6f4;
+    --panel: #ffffff;
+    --text: #1b2420;
+    --muted: #5b665f;
+    --accent: #1f7a6c;
+    --accent-2: #c6702b;
+    --border: #dde2dc;
+    --danger: #b3413a;
+  }
+
   * { box-sizing: border-box; }
   body {
     margin: 0;
     min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  h1, h2, h3 { font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif; text-wrap: balance; }
+
+  .badge {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-family: Georgia, serif;
+    font-weight: 700;
+    font-size: 0.95rem;
+    flex-shrink: 0;
+  }
+
+  /* ---------- Header ---------- */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand h1 { margin: 0; font-size: 1.35rem; letter-spacing: 0.01em; }
+  .brand small { display: block; color: var(--muted); font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; }
+  .who { display: flex; align-items: center; gap: 12px; font-size: 0.9rem; color: var(--muted); }
+  .pill {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-2) 18%, transparent);
+    color: var(--accent-2);
+    font-weight: 600;
+  }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    padding: 10px 18px;
+    font-weight: 600;
+    transition: opacity 0.15s ease, transform 0.05s ease;
+  }
+  button:active { transform: scale(0.98); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+  .btn-ghost:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+  .btn-danger { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); padding: 6px 12px; font-size: 0.85rem; }
+  .btn-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+  .btn-link {
+    background: none; border: none; padding: 0;
+    color: var(--accent); font-weight: 600; text-decoration: underline;
+  }
+
+  input {
+    font: inherit;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    width: 100%;
+  }
+  input:focus, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 5px; }
+  .field { margin-bottom: 14px; }
+
+  /* ---------- Auth screen ---------- */
+  #authScreen {
+    min-height: calc(100vh - 65px);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: radial-gradient(circle at 50% 20%, #1e293b, var(--bg));
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    color: var(--text);
+    padding: 32px 16px;
+  }
+  .auth-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 36px 32px;
+    width: 100%;
+    max-width: 380px;
+  }
+  .auth-card h2 { margin: 0 0 4px; font-size: 1.4rem; }
+  .auth-card .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+  .toggle-row { margin-top: 18px; text-align: center; font-size: 0.85rem; color: var(--muted); }
+  .error-msg { color: var(--danger); font-size: 0.85rem; margin-top: 4px; min-height: 1.2em; }
+
+  /* ---------- Main app ---------- */
+  main { max-width: 1080px; margin: 0 auto; padding: 28px 24px 60px; }
+  .section-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 16px; gap: 12px; flex-wrap: wrap;
+  }
+  .section-head h2 { margin: 0; font-size: 1.2rem; }
+  .hint { color: var(--muted); font-size: 0.85rem; }
+
+  .upload-panel {
+    background: var(--panel);
+    border: 1px dashed color-mix(in srgb, var(--accent-2) 55%, var(--border));
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 28px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+  }
+  .upload-panel .field { margin-bottom: 0; flex: 1 1 200px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 20px;
   }
   .card {
     background: var(--panel);
-    border-radius: 16px;
-    padding: 48px 40px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .card video { width: 100%; display: block; background: #000; aspect-ratio: 16/9; }
+  .card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .card-body .title { font-weight: 600; }
+  .card-body .meta { font-size: 0.78rem; color: var(--muted); }
+  .card-body .row { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+
+  .empty {
     text-align: center;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    max-width: 420px;
-    width: 90%;
+    padding: 60px 20px;
+    color: var(--muted);
+    border: 1px dashed var(--border);
+    border-radius: 12px;
   }
-  h1 {
-    margin: 0 0 8px;
-    font-size: 1.75rem;
+
+  .disclosure {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.5;
   }
-  p {
-    margin: 0 0 28px;
-    color: #94a3b8;
-  }
-  #flask {
-    font-size: 3rem;
-    display: inline-block;
-    margin-bottom: 12px;
-    transition: transform 0.4s ease;
-  }
-  #flask.react {
-    animation: bubble 0.6s ease-in-out;
-  }
-  @keyframes bubble {
-    0%   { transform: scale(1) rotate(0deg); }
-    30%  { transform: scale(1.2) rotate(-8deg); }
-    60%  { transform: scale(0.95) rotate(6deg); }
-    100% { transform: scale(1) rotate(0deg); }
-  }
-  button {
-    background: var(--accent);
-    color: #0f172a;
-    border: none;
-    padding: 14px 32px;
-    font-size: 1rem;
-    font-weight: 600;
-    border-radius: 999px;
-    cursor: pointer;
-    transition: background 0.2s ease, transform 0.1s ease;
-  }
-  button:hover { background: var(--accent-dark); color: var(--text); }
-  button:active { transform: scale(0.96); }
-  #result {
-    margin-top: 20px;
-    min-height: 1.5rem;
-    font-size: 0.95rem;
-    color: var(--accent);
-  }
+
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-  <div class="card">
-    <div id="flask">🧪</div>
-    <h1>Chemistry Sim</h1>
-    <p>Click the button to run a reaction.</p>
-    <button id="reactBtn">React!</button>
-    <div id="result"></div>
+
+<header>
+  <div class="brand">
+    <div class="badge">SH</div>
+    <div>
+      <h1>Science Hound</h1>
+      <small>Free video library</small>
+    </div>
+  </div>
+  <div class="who" id="whoBox" hidden>
+    <span id="whoLabel"></span>
+    <button class="btn-ghost" id="signOutBtn">Sign out</button>
+  </div>
+</header>
+
+<!-- ================= AUTH SCREEN ================= -->
+<div id="authScreen">
+  <div class="auth-card">
+    <div id="viewerForm">
+      <h2>Watch for free</h2>
+      <div class="sub">Sign in with your name to get free access to the video library.</div>
+      <div class="field">
+        <label for="viewerName">Your name</label>
+        <input id="viewerName" type="text" placeholder="e.g. Alex" autocomplete="name">
+      </div>
+      <button class="btn-primary" id="viewerSubmit" style="width:100%;">Sign in &amp; subscribe free</button>
+      <div class="error-msg" id="viewerError"></div>
+      <div class="toggle-row">
+        Are you the admin? <button class="btn-link" id="showAdmin">Admin sign in</button>
+      </div>
+    </div>
+
+    <div id="adminForm" hidden>
+      <h2>Admin sign in</h2>
+      <div class="sub">Upload and manage the video library.</div>
+      <div class="field">
+        <label for="adminUser">Username</label>
+        <input id="adminUser" type="text" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="adminPass">Password</label>
+        <input id="adminPass" type="password" autocomplete="current-password">
+      </div>
+      <button class="btn-primary" id="adminSubmit" style="width:100%;">Sign in</button>
+      <div class="error-msg" id="adminError"></div>
+      <div class="toggle-row">
+        <button class="btn-link" id="showViewer">Back to viewer sign in</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MAIN APP ================= -->
+<main id="mainScreen" hidden>
+
+  <div class="upload-panel" id="uploadPanel" hidden>
+    <div class="field">
+      <label for="videoTitle">Video title</label>
+      <input id="videoTitle" type="text" placeholder="e.g. Density Tower Demo">
+    </div>
+    <div class="field">
+      <label for="videoFile">Video file</label>
+      <input id="videoFile" type="file" accept="video/*">
+    </div>
+    <button class="btn-primary" id="uploadBtn">Upload video</button>
+  </div>
+  <div class="error-msg" id="uploadError"></div>
+
+  <div class="section-head">
+    <h2>Video library</h2>
+    <span class="hint" id="countHint"></span>
   </div>
 
-  <script>
-    const reactions = [
-      "💥 Exothermic reaction! Temperature rising.",
-      "🫧 Bubbles forming — gas released.",
-      "🔵 Solution turned blue. Copper sulfate detected.",
-      "⚡ Reaction complete. Equilibrium reached.",
-      "🌫️ A vapor cloud appears above the flask."
-    ];
+  <div class="grid" id="videoGrid"></div>
+  <div class="empty" id="emptyState" hidden>No videos yet. Check back soon.</div>
 
-    const flask = document.getElementById('flask');
-    const result = document.getElementById('result');
+  <div class="disclosure">
+    Science Hound is a demo library. Videos are stored locally in this browser (not on a shared server),
+    so uploads made here are only visible on this device.
+  </div>
+</main>
 
-    document.getElementById('reactBtn').addEventListener('click', () => {
-      flask.classList.remove('react');
-      void flask.offsetWidth;
-      flask.classList.add('react');
-      result.textContent = reactions[Math.floor(Math.random() * reactions.length)];
+<script>
+(function () {
+  "use strict";
+
+  const ADMIN_USER = "Luke";
+  const ADMIN_PASS = "3113";
+  const SESSION_KEY = "sh_session";
+
+  // ---------- IndexedDB ----------
+  let db;
+  const dbReady = new Promise((resolve, reject) => {
+    const req = indexedDB.open("scienceHoundDB", 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore("videos", { keyPath: "id", autoIncrement: true });
+    };
+    req.onsuccess = () => { db = req.result; resolve(); };
+    req.onerror = () => reject(req.error);
+  });
+
+  function addVideo(title, blob) {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("videos", "readwrite");
+      tx.objectStore("videos").add({ title, blob, uploadedAt: Date.now() });
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function deleteVideo(id) {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("videos", "readwrite");
+      tx.objectStore("videos").delete(id);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function getAllVideos() {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("videos", "readonly");
+      const req = tx.objectStore("videos").getAll();
+      req.onsuccess = () => resolve(req.result.sort((a, b) => b.uploadedAt - a.uploadedAt));
+      req.onerror = () => reject(req.error);
+    }));
+  }
+
+  // ---------- Session ----------
+  function getSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch (e) { return null; }
+  }
+  function setSession(session) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  }
+  function clearSession() {
+    localStorage.removeItem(SESSION_KEY);
+  }
+
+  // ---------- Elements ----------
+  const authScreen = document.getElementById("authScreen");
+  const mainScreen = document.getElementById("mainScreen");
+  const whoBox = document.getElementById("whoBox");
+  const whoLabel = document.getElementById("whoLabel");
+  const uploadPanel = document.getElementById("uploadPanel");
+  const videoGrid = document.getElementById("videoGrid");
+  const emptyState = document.getElementById("emptyState");
+  const countHint = document.getElementById("countHint");
+
+  const viewerForm = document.getElementById("viewerForm");
+  const adminForm = document.getElementById("adminForm");
+
+  document.getElementById("showAdmin").addEventListener("click", () => {
+    viewerForm.hidden = true;
+    adminForm.hidden = false;
+  });
+  document.getElementById("showViewer").addEventListener("click", () => {
+    adminForm.hidden = true;
+    viewerForm.hidden = false;
+  });
+
+  document.getElementById("viewerSubmit").addEventListener("click", () => {
+    const name = document.getElementById("viewerName").value.trim();
+    const errorEl = document.getElementById("viewerError");
+    if (!name) {
+      errorEl.textContent = "Please enter your name.";
+      return;
+    }
+    errorEl.textContent = "";
+    setSession({ role: "viewer", name });
+    render();
+  });
+
+  document.getElementById("adminSubmit").addEventListener("click", () => {
+    const user = document.getElementById("adminUser").value.trim();
+    const pass = document.getElementById("adminPass").value;
+    const errorEl = document.getElementById("adminError");
+    if (user === ADMIN_USER && pass === ADMIN_PASS) {
+      errorEl.textContent = "";
+      setSession({ role: "admin", name: ADMIN_USER });
+      render();
+    } else {
+      errorEl.textContent = "Incorrect username or password.";
+    }
+  });
+
+  document.getElementById("signOutBtn").addEventListener("click", () => {
+    clearSession();
+    render();
+  });
+
+  document.getElementById("uploadBtn").addEventListener("click", async () => {
+    const titleInput = document.getElementById("videoTitle");
+    const fileInput = document.getElementById("videoFile");
+    const errorEl = document.getElementById("uploadError");
+    const title = titleInput.value.trim();
+    const file = fileInput.files[0];
+
+    if (!title || !file) {
+      errorEl.textContent = "Please add a title and choose a video file.";
+      return;
+    }
+    errorEl.textContent = "";
+    await addVideo(title, file);
+    titleInput.value = "";
+    fileInput.value = "";
+    await renderLibrary();
+  });
+
+  function formatDate(ts) {
+    return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  async function renderLibrary() {
+    const session = getSession();
+    const isAdmin = session && session.role === "admin";
+    const videos = await getAllVideos();
+
+    countHint.textContent = videos.length
+      ? `${videos.length} video${videos.length === 1 ? "" : "s"}`
+      : "";
+    emptyState.hidden = videos.length !== 0;
+    videoGrid.innerHTML = "";
+
+    videos.forEach((v) => {
+      const url = URL.createObjectURL(v.blob);
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const video = document.createElement("video");
+      video.src = url;
+      video.controls = true;
+      video.preload = "metadata";
+      card.appendChild(video);
+
+      const body = document.createElement("div");
+      body.className = "card-body";
+
+      const title = document.createElement("div");
+      title.className = "title";
+      title.textContent = v.title;
+      body.appendChild(title);
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = `Uploaded ${formatDate(v.uploadedAt)}`;
+      body.appendChild(meta);
+
+      if (isAdmin) {
+        const row = document.createElement("div");
+        row.className = "row";
+        const delBtn = document.createElement("button");
+        delBtn.className = "btn-danger";
+        delBtn.textContent = "Delete";
+        delBtn.addEventListener("click", async () => {
+          if (confirm(`Delete "${v.title}"? This can't be undone.`)) {
+            await deleteVideo(v.id);
+            await renderLibrary();
+          }
+        });
+        row.appendChild(delBtn);
+        body.appendChild(row);
+      }
+
+      card.appendChild(body);
+      videoGrid.appendChild(card);
     });
-  </script>
+  }
+
+  async function render() {
+    const session = getSession();
+
+    if (!session) {
+      authScreen.hidden = false;
+      mainScreen.hidden = true;
+      whoBox.hidden = true;
+      viewerForm.hidden = false;
+      adminForm.hidden = true;
+      return;
+    }
+
+    authScreen.hidden = true;
+    mainScreen.hidden = false;
+    whoBox.hidden = false;
+
+    const isAdmin = session.role === "admin";
+    whoLabel.innerHTML = isAdmin
+      ? `${session.name} <span class="pill">Admin</span>`
+      : `${session.name} <span class="pill">Free member</span>`;
+    uploadPanel.hidden = !isAdmin;
+
+    await renderLibrary();
+  }
+
+  render();
+})();
+</script>
 </body>
 </html>
