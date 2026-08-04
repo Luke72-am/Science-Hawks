@@ -381,6 +381,28 @@
   const SESSION_KEY = "sh_session";
   const USERS_KEY = "sh_users";
 
+  // Two-click confirm (window.confirm() is blocked in sandboxed frames)
+  function armConfirmButton(btn, onConfirm) {
+    const original = btn.textContent;
+    let armed = false;
+    let timer = null;
+    btn.addEventListener("click", () => {
+      if (!armed) {
+        armed = true;
+        btn.textContent = "Click again to confirm";
+        timer = setTimeout(() => {
+          armed = false;
+          btn.textContent = original;
+        }, 3000);
+      } else {
+        clearTimeout(timer);
+        armed = false;
+        btn.textContent = original;
+        onConfirm();
+      }
+    });
+  }
+
   // ---------- IndexedDB ----------
   let db;
   const dbReady = new Promise((resolve, reject) => {
@@ -440,6 +462,10 @@
 
   // ---------- Reviews ----------
   const REVIEWS_KEY = "sh_reviews";
+  if (!localStorage.getItem("sh_reviews_reset_v1")) {
+    localStorage.removeItem(REVIEWS_KEY);
+    localStorage.setItem("sh_reviews_reset_v1", "1");
+  }
   const BAD_WORDS = [
     "fuck", "shit", "bitch", "asshole", "bastard", "dick", "piss",
     "cunt", "cock", "pussy", "slut", "whore", "damn", "crap", "hell"
@@ -640,11 +666,9 @@
         const delBtn = document.createElement("button");
         delBtn.className = "btn-danger";
         delBtn.textContent = "Delete";
-        delBtn.addEventListener("click", async () => {
-          if (confirm(`Delete "${v.title}"? This can't be undone.`)) {
-            await deleteVideo(v.id);
-            await renderLibrary();
-          }
+        armConfirmButton(delBtn, async () => {
+          await deleteVideo(v.id);
+          await renderLibrary();
         });
         row.appendChild(delBtn);
         body.appendChild(row);
@@ -699,11 +723,9 @@
         const delBtn = document.createElement("button");
         delBtn.className = "btn-danger";
         delBtn.textContent = "Delete";
-        delBtn.addEventListener("click", () => {
-          if (confirm("Delete your review? This can't be undone.")) {
-            deleteReview(r.id);
-            renderReviews();
-          }
+        armConfirmButton(delBtn, () => {
+          deleteReview(r.id);
+          renderReviews();
         });
         actions.appendChild(delBtn);
         card.appendChild(actions);
