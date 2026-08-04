@@ -149,7 +149,29 @@
   }
   .auth-card h2 { margin: 0 0 4px; font-size: 1.4rem; }
   .auth-card .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
-  .toggle-row { margin-top: 18px; text-align: center; font-size: 0.85rem; color: var(--muted); }
+  .auth-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 24px;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 8px 0;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .tab-btn.active {
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  }
   .error-msg { color: var(--danger); font-size: 0.85rem; margin-top: 4px; min-height: 1.2em; }
 
   /* ---------- Main app ---------- */
@@ -232,9 +254,14 @@
 <!-- ================= AUTH SCREEN ================= -->
 <div id="authScreen">
   <div class="auth-card">
+    <div class="auth-tabs">
+      <button type="button" class="tab-btn active" id="tabLogIn">Log in</button>
+      <button type="button" class="tab-btn" id="tabSignUp">Sign up</button>
+    </div>
+
     <div id="signInForm">
-      <h2>Sign in</h2>
-      <div class="sub">Sign in with your username and password to access the video library.</div>
+      <h2>Log in</h2>
+      <div class="sub">Access an existing account.</div>
       <div class="field">
         <label for="signInUser">Username</label>
         <input id="signInUser" type="text" autocomplete="username">
@@ -243,16 +270,13 @@
         <label for="signInPass">Password</label>
         <input id="signInPass" type="password" autocomplete="current-password">
       </div>
-      <button class="btn-primary" id="signInSubmit" style="width:100%;">Sign in</button>
+      <button class="btn-primary" id="signInSubmit" style="width:100%;">Log in</button>
       <div class="error-msg" id="signInError"></div>
-      <div class="toggle-row">
-        New here? <button class="btn-link" id="showSignUp">Create a free account</button>
-      </div>
     </div>
 
     <div id="signUpForm" hidden>
-      <h2>Create a free account</h2>
-      <div class="sub">Sign up for free access to the video library.</div>
+      <h2>Sign up</h2>
+      <div class="sub">Create a new, free account.</div>
       <div class="field">
         <label for="signUpUser">Choose a username</label>
         <input id="signUpUser" type="text" autocomplete="username">
@@ -265,11 +289,8 @@
         <label for="signUpPass2">Confirm password</label>
         <input id="signUpPass2" type="password" autocomplete="new-password">
       </div>
-      <button class="btn-primary" id="signUpSubmit" style="width:100%;">Create account &amp; subscribe free</button>
+      <button class="btn-primary" id="signUpSubmit" style="width:100%;">Sign up &amp; subscribe free</button>
       <div class="error-msg" id="signUpError"></div>
-      <div class="toggle-row">
-        Already have an account? <button class="btn-link" id="showSignIn">Sign in</button>
-      </div>
     </div>
   </div>
 </div>
@@ -383,15 +404,23 @@
 
   const signInForm = document.getElementById("signInForm");
   const signUpForm = document.getElementById("signUpForm");
+  const tabLogIn = document.getElementById("tabLogIn");
+  const tabSignUp = document.getElementById("tabSignUp");
 
-  document.getElementById("showSignUp").addEventListener("click", () => {
-    signInForm.hidden = true;
-    signUpForm.hidden = false;
-  });
-  document.getElementById("showSignIn").addEventListener("click", () => {
-    signUpForm.hidden = true;
+  function showLogIn() {
     signInForm.hidden = false;
-  });
+    signUpForm.hidden = true;
+    tabLogIn.classList.add("active");
+    tabSignUp.classList.remove("active");
+  }
+  function showSignUp() {
+    signUpForm.hidden = false;
+    signInForm.hidden = true;
+    tabSignUp.classList.add("active");
+    tabLogIn.classList.remove("active");
+  }
+  tabLogIn.addEventListener("click", showLogIn);
+  tabSignUp.addEventListener("click", showSignUp);
 
   document.getElementById("signInSubmit").addEventListener("click", () => {
     const user = document.getElementById("signInUser").value.trim();
@@ -541,8 +570,7 @@
       authScreen.hidden = false;
       mainScreen.hidden = true;
       whoBox.hidden = true;
-      signInForm.hidden = false;
-      signUpForm.hidden = true;
+      showLogIn();
       return;
     }
 
