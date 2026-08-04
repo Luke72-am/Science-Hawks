@@ -184,6 +184,61 @@
   .section-head h2 { margin: 0; font-size: 1.2rem; }
   .hint { color: var(--muted); font-size: 0.85rem; }
 
+  /* ---------- Intro ---------- */
+  .intro-section { margin-bottom: 44px; }
+  .intro-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 26px 28px;
+  }
+  .intro-text { line-height: 1.7; margin: 0 0 16px; }
+  .intro-text:last-child { margin-bottom: 0; }
+  .intro-text a { color: var(--accent); }
+  .intro-arrow {
+    display: flex;
+    justify-content: center;
+    margin: 18px 0;
+    color: var(--accent);
+  }
+  .intro-arrow svg { width: 30px; height: 30px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .intro-arrow { animation: intro-bob 1.8s ease-in-out infinite; }
+  }
+  @keyframes intro-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(6px); }
+  }
+  .intro-video-wrap { max-width: 640px; margin: 0 auto; }
+  .intro-video-label { margin: 0 0 12px; font-size: 1.15rem; text-align: center; }
+  .intro-video-wrap video {
+    width: 100%;
+    display: block;
+    border-radius: 12px;
+    background: #000;
+    aspect-ratio: 16 / 9;
+  }
+  .intro-video-empty {
+    aspect-ratio: 16 / 9;
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--muted);
+    padding: 20px;
+  }
+  .intro-video-admin {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+  }
+  .intro-video-admin input[type="file"] { width: auto; flex: 1 1 200px; }
+
   .upload-panel {
     background: var(--panel);
     border: 1px dashed var(--border);
@@ -345,6 +400,46 @@
 <!-- ================= MAIN APP ================= -->
 <main id="mainScreen" hidden>
 
+  <section class="intro-section">
+    <div class="intro-card">
+      <p class="intro-text">Hello, my name is Luke, and I have created this website to support the
+        local community and provide free education for children, especially homeschoolers. This
+        website provides free access to 30 minute videos, created by yours truly, of science, STEM,
+        space and physics. All of my information comes directly from these PUBLIC DOMAIN TEXTBOOKS
+        (enter names here). Every Tuesday and Thursday I release my videos, for you to watch and have
+        complete access to forever.</p>
+      <p class="intro-text">Every Tuesday I release a video covering chemistry and STEM related
+        topics. First we will cover the bonds between atoms and molecules, how they all work. Then we
+        will cover different kinds of popular chemical compounds and bonds, and their uses in later
+        videos. Thursdays I release space and physics related videos. We will cover astronomy, how
+        stars and black holes work, the true scale of the universe, and much more. Now I have much
+        more content on chemistry though, and once I run out of space like content after a few
+        months, maybe more, I will start covering chemistry in ALL released videos after that.</p>
+      <p class="intro-text">Now keep in mind I am not qualified or certified for this, I am only a
+        teen. But my sources are very reliable and these topics are my passion. Lastly, this is a
+        strictly CLEAN, and Christian site, no language or inappropriate content, this website is
+        meant to serve the community, and The Lord. If you have any questions, comments or concerns,
+        watch the video below. Or you can reach me at
+        <a href="mailto:Travelingtreasures12345@gmail.com">Travelingtreasures12345@gmail.com</a>, or
+        you can leave a review highlighting your thoughts. Thank you God be with you all.</p>
+    </div>
+
+    <div class="intro-arrow" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M6 14l6 6 6-6"/></svg>
+    </div>
+
+    <div class="intro-video-wrap">
+      <h2 class="intro-video-label">What Science Hound Is About</h2>
+      <div id="introVideoArea"></div>
+      <div class="intro-video-admin" id="introVideoAdmin" hidden>
+        <input type="file" id="introVideoFile" accept="video/*">
+        <button class="btn-primary" id="introVideoUploadBtn">Upload intro video</button>
+        <button class="btn-danger" id="introVideoRemoveBtn" hidden>Remove intro video</button>
+      </div>
+      <div class="error-msg" id="introVideoError"></div>
+    </div>
+  </section>
+
   <div class="upload-panel" id="uploadPanel" hidden>
     <div class="upload-row">
       <div class="field">
@@ -440,9 +535,15 @@
   // ---------- IndexedDB ----------
   let db;
   const dbReady = new Promise((resolve, reject) => {
-    const req = indexedDB.open("scienceHoundDB", 1);
+    const req = indexedDB.open("scienceHoundDB", 2);
     req.onupgradeneeded = () => {
-      req.result.createObjectStore("videos", { keyPath: "id", autoIncrement: true });
+      const upgradeDb = req.result;
+      if (!upgradeDb.objectStoreNames.contains("videos")) {
+        upgradeDb.createObjectStore("videos", { keyPath: "id", autoIncrement: true });
+      }
+      if (!upgradeDb.objectStoreNames.contains("introVideo")) {
+        upgradeDb.createObjectStore("introVideo", { keyPath: "key" });
+      }
     };
     req.onsuccess = () => { db = req.result; resolve(); };
     req.onerror = () => reject(req.error);
@@ -478,6 +579,33 @@
           store.put(record);
         }
       };
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function setIntroVideo(blob) {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("introVideo", "readwrite");
+      tx.objectStore("introVideo").put({ key: "intro", blob, uploadedAt: Date.now() });
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function getIntroVideo() {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("introVideo", "readonly");
+      const req = tx.objectStore("introVideo").get("intro");
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    }));
+  }
+
+  function deleteIntroVideo() {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("introVideo", "readwrite");
+      tx.objectStore("introVideo").delete("intro");
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     }));
@@ -660,6 +788,26 @@
     await renderLibrary();
   });
 
+  document.getElementById("introVideoUploadBtn").addEventListener("click", async () => {
+    const fileInput = document.getElementById("introVideoFile");
+    const errorEl = document.getElementById("introVideoError");
+    const file = fileInput.files[0];
+
+    if (!file) {
+      errorEl.textContent = "Please choose a video file.";
+      return;
+    }
+    errorEl.textContent = "";
+    await setIntroVideo(file);
+    fileInput.value = "";
+    await renderIntroVideo();
+  });
+
+  armConfirmButton(document.getElementById("introVideoRemoveBtn"), async () => {
+    await deleteIntroVideo();
+    await renderIntroVideo();
+  });
+
   document.getElementById("reviewSubmit").addEventListener("click", () => {
     const session = getSession();
     const text = reviewText.value.trim();
@@ -701,6 +849,33 @@
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return today >= releaseDate;
+  }
+
+  async function renderIntroVideo() {
+    const session = getSession();
+    const isAdmin = session && session.role === "admin";
+    const area = document.getElementById("introVideoArea");
+    const adminControls = document.getElementById("introVideoAdmin");
+    const removeBtn = document.getElementById("introVideoRemoveBtn");
+    const record = await getIntroVideo();
+
+    area.innerHTML = "";
+    if (record && record.blob) {
+      const video = document.createElement("video");
+      video.src = URL.createObjectURL(record.blob);
+      video.controls = true;
+      video.preload = "metadata";
+      area.appendChild(video);
+      removeBtn.hidden = false;
+    } else {
+      const placeholder = document.createElement("div");
+      placeholder.className = "intro-video-empty";
+      placeholder.textContent = "Intro video coming soon.";
+      area.appendChild(placeholder);
+      removeBtn.hidden = true;
+    }
+
+    adminControls.hidden = !isAdmin;
   }
 
   async function renderLibrary() {
@@ -865,6 +1040,7 @@
       : `${session.name} <span class="pill">Free member</span>`;
     uploadPanel.hidden = !isAdmin;
 
+    await renderIntroVideo();
     await renderLibrary();
     renderReviews();
   }
