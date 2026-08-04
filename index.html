@@ -195,6 +195,13 @@
   .intro-text { line-height: 1.7; margin: 0 0 16px; }
   .intro-text:last-child { margin-bottom: 0; }
   .intro-text a { color: var(--accent); }
+  .intro-admin-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  #introTextInput {
+    min-height: 280px;
+    line-height: 1.6;
+    resize: vertical;
+  }
+  .intro-edit-actions { display: flex; gap: 8px; margin-top: 10px; }
   .intro-arrow {
     display: flex;
     justify-content: center;
@@ -402,26 +409,20 @@
 
   <section class="intro-section">
     <div class="intro-card">
-      <p class="intro-text">Hello, my name is Luke, and I have created this website to support the
-        local community and provide free education for children, especially homeschoolers. This
-        website provides free access to 30 minute videos, created by yours truly, of science, STEM,
-        space and physics. All of my information comes directly from these PUBLIC DOMAIN TEXTBOOKS
-        (enter names here). Every Tuesday and Thursday I release my videos, for you to watch and have
-        complete access to forever.</p>
-      <p class="intro-text">Every Tuesday I release a video covering chemistry and STEM related
-        topics. First we will cover the bonds between atoms and molecules, how they all work. Then we
-        will cover different kinds of popular chemical compounds and bonds, and their uses in later
-        videos. Thursdays I release space and physics related videos. We will cover astronomy, how
-        stars and black holes work, the true scale of the universe, and much more. Now I have much
-        more content on chemistry though, and once I run out of space like content after a few
-        months, maybe more, I will start covering chemistry in ALL released videos after that.</p>
-      <p class="intro-text">Now keep in mind I am not qualified or certified for this, I am only a
-        teen. But my sources are very reliable and these topics are my passion. Lastly, this is a
-        strictly CLEAN, and Christian site, no language or inappropriate content, this website is
-        meant to serve the community, and The Lord. If you have any questions, comments or concerns,
-        watch the video below. Or you can reach me at
-        <a href="mailto:Travelingtreasures12345@gmail.com">Travelingtreasures12345@gmail.com</a>, or
-        you can leave a review highlighting your thoughts. Thank you God be with you all.</p>
+      <div class="intro-admin-row" id="introEditRow" hidden>
+        <button class="btn-ghost" id="introEditBtn">Edit description</button>
+      </div>
+
+      <div id="introTextDisplay"></div>
+
+      <div id="introTextEditor" hidden>
+        <textarea id="introTextInput" rows="16"></textarea>
+        <div class="intro-edit-actions">
+          <button class="btn-primary" id="introTextSaveBtn">Save</button>
+          <button class="btn-ghost" id="introTextCancelBtn">Cancel</button>
+        </div>
+        <div class="error-msg" id="introTextError"></div>
+      </div>
     </div>
 
     <div class="intro-arrow" aria-hidden="true">
@@ -666,6 +667,43 @@
     localStorage.setItem(REVIEWS_KEY, JSON.stringify(reviews));
   }
 
+  // ---------- Intro description ----------
+  const INTRO_TEXT_KEY = "sh_intro_text";
+  const DEFAULT_INTRO_TEXT = [
+    "Hello, my name is Luke, and I have created this website to support the local community and provide free education for children, especially homeschoolers. This website provides free access to 30 minute videos, created by yours truly, of science, STEM, space and physics. All of my information comes directly from these PUBLIC DOMAIN TEXTBOOKS (enter names here). Every Tuesday and Thursday I release my videos, for you to watch and have complete access to forever.",
+    "Every Tuesday I release a video covering chemistry and STEM related topics. First we will cover the bonds between atoms and molecules, how they all work. Then we will cover different kinds of popular chemical compounds and bonds, and their uses in later videos. Thursdays I release space and physics related videos. We will cover astronomy, how stars and black holes work, the true scale of the universe, and much more. Now I have much more content on chemistry though, and once I run out of space like content after a few months, maybe more, I will start covering chemistry in ALL released videos after that.",
+    "Now keep in mind I am not qualified or certified for this, I am only a teen. But my sources are very reliable and these topics are my passion. Lastly, this is a strictly CLEAN, and Christian site, no language or inappropriate content, this website is meant to serve the community, and The Lord. If you have any questions, comments or concerns, watch the video below. Or you can reach me at Travelingtreasures12345@gmail.com, or you can leave a review highlighting your thoughts. Thank you God be with you all."
+  ].join("\n\n");
+
+  function getIntroText() {
+    return localStorage.getItem(INTRO_TEXT_KEY) || DEFAULT_INTRO_TEXT;
+  }
+  function saveIntroText(text) {
+    localStorage.setItem(INTRO_TEXT_KEY, text);
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function linkify(s) {
+    return s
+      .replace(/([\w.+-]+@[\w-]+\.[\w.-]+)/g, '<a href="mailto:$1">$1</a>')
+      .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  }
+
+  function renderIntroText() {
+    const display = document.getElementById("introTextDisplay");
+    display.innerHTML = "";
+    getIntroText().split(/\n{2,}/).forEach((paragraph) => {
+      const trimmed = paragraph.trim();
+      if (!trimmed) return;
+      const p = document.createElement("p");
+      p.className = "intro-text";
+      p.innerHTML = linkify(escapeHtml(trimmed));
+      display.appendChild(p);
+    });
+  }
+
   // ---------- Elements ----------
   const authScreen = document.getElementById("authScreen");
   const mainScreen = document.getElementById("mainScreen");
@@ -806,6 +844,40 @@
   armConfirmButton(document.getElementById("introVideoRemoveBtn"), async () => {
     await deleteIntroVideo();
     await renderIntroVideo();
+  });
+
+  const introTextDisplay = document.getElementById("introTextDisplay");
+  const introTextEditor = document.getElementById("introTextEditor");
+  const introEditRow = document.getElementById("introEditRow");
+  const introTextInput = document.getElementById("introTextInput");
+  const introTextError = document.getElementById("introTextError");
+
+  document.getElementById("introEditBtn").addEventListener("click", () => {
+    introTextInput.value = getIntroText();
+    introTextError.textContent = "";
+    introTextDisplay.hidden = true;
+    introEditRow.hidden = true;
+    introTextEditor.hidden = false;
+  });
+
+  document.getElementById("introTextCancelBtn").addEventListener("click", () => {
+    introTextEditor.hidden = true;
+    introTextDisplay.hidden = false;
+    introEditRow.hidden = false;
+  });
+
+  document.getElementById("introTextSaveBtn").addEventListener("click", () => {
+    const value = introTextInput.value.trim();
+    if (!value) {
+      introTextError.textContent = "Description can't be empty.";
+      return;
+    }
+    introTextError.textContent = "";
+    saveIntroText(value);
+    introTextEditor.hidden = true;
+    introTextDisplay.hidden = false;
+    introEditRow.hidden = false;
+    renderIntroText();
   });
 
   document.getElementById("reviewSubmit").addEventListener("click", () => {
@@ -1039,6 +1111,11 @@
       ? `${session.name} <span class="pill">Admin</span>`
       : `${session.name} <span class="pill">Free member</span>`;
     uploadPanel.hidden = !isAdmin;
+
+    introEditRow.hidden = !isAdmin;
+    introTextEditor.hidden = true;
+    introTextDisplay.hidden = false;
+    renderIntroText();
 
     await renderIntroVideo();
     await renderLibrary();
