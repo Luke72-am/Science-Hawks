@@ -450,6 +450,10 @@
     return text.replace(BAD_WORDS_RE, (match) => "*".repeat(match.length));
   }
 
+  function makeId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+
   function getReviews() {
     try { return JSON.parse(localStorage.getItem(REVIEWS_KEY)) || []; } catch (e) { return []; }
   }
@@ -585,7 +589,7 @@
     reviewError.textContent = "";
 
     const reviews = getReviews();
-    reviews.push({ id: crypto.randomUUID(), name: session.name, text: censor(text), date: Date.now() });
+    reviews.push({ id: makeId(), name: session.name, text: censor(text), date: Date.now() });
     saveReviews(reviews);
     reviewText.value = "";
     renderReviews();
