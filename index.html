@@ -251,6 +251,7 @@
   .review-card .review-name { font-weight: 600; }
   .review-card .review-date { font-size: 0.78rem; color: var(--muted); flex-shrink: 0; }
   .review-card .review-text { line-height: 1.5; white-space: pre-wrap; }
+  .review-card .review-actions { margin-top: 8px; }
 
   .disclosure {
     margin-top: 40px;
@@ -584,7 +585,7 @@
     reviewError.textContent = "";
 
     const reviews = getReviews();
-    reviews.push({ name: session.name, text: censor(text), date: Date.now() });
+    reviews.push({ id: crypto.randomUUID(), name: session.name, text: censor(text), date: Date.now() });
     saveReviews(reviews);
     reviewText.value = "";
     renderReviews();
@@ -650,7 +651,12 @@
     });
   }
 
+  function deleteReview(id) {
+    saveReviews(getReviews().filter((r) => r.id !== id));
+  }
+
   function renderReviews() {
+    const session = getSession();
     const reviews = getReviews().sort((a, b) => b.date - a.date);
 
     reviewCountHint.textContent = reviews.length
@@ -682,6 +688,22 @@
       text.className = "review-text";
       text.textContent = r.text;
       card.appendChild(text);
+
+      if (session && session.name === r.name) {
+        const actions = document.createElement("div");
+        actions.className = "review-actions";
+        const delBtn = document.createElement("button");
+        delBtn.className = "btn-danger";
+        delBtn.textContent = "Delete";
+        delBtn.addEventListener("click", () => {
+          if (confirm("Delete your review? This can't be undone.")) {
+            deleteReview(r.id);
+            renderReviews();
+          }
+        });
+        actions.appendChild(delBtn);
+        card.appendChild(actions);
+      }
 
       reviewList.appendChild(card);
     });
