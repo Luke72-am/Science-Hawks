@@ -115,7 +115,7 @@
     color: var(--accent); font-weight: 600; text-decoration: underline;
   }
 
-  input {
+  input, textarea {
     font: inherit;
     padding: 10px 12px;
     border-radius: 8px;
@@ -124,7 +124,8 @@
     color: var(--text);
     width: 100%;
   }
-  input:focus, button:focus-visible {
+  textarea { resize: vertical; min-height: 72px; }
+  input:focus, textarea:focus, button:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
@@ -223,6 +224,34 @@
     border-radius: 12px;
   }
 
+  /* ---------- Reviews ---------- */
+  .reviews-section { margin-top: 44px; }
+  .review-form {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 20px;
+  }
+  .review-form textarea { margin-bottom: 10px; }
+  .review-list { display: flex; flex-direction: column; gap: 14px; }
+  .review-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+  }
+  .review-card .review-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .review-card .review-name { font-weight: 600; }
+  .review-card .review-date { font-size: 0.78rem; color: var(--muted); flex-shrink: 0; }
+  .review-card .review-text { line-height: 1.5; white-space: pre-wrap; }
+
   .disclosure {
     margin-top: 40px;
     padding-top: 16px;
@@ -319,10 +348,26 @@
   <div class="grid" id="videoGrid"></div>
   <div class="empty" id="emptyState" hidden>No videos yet. Check back soon.</div>
 
+  <div class="reviews-section">
+    <div class="section-head">
+      <h2>Reviews</h2>
+      <span class="hint" id="reviewCountHint"></span>
+    </div>
+
+    <div class="review-form">
+      <textarea id="reviewText" placeholder="What do you think of Science Hound?"></textarea>
+      <button class="btn-primary" id="reviewSubmit">Post review</button>
+      <div class="error-msg" id="reviewError"></div>
+    </div>
+
+    <div class="review-list" id="reviewList"></div>
+    <div class="empty" id="reviewEmpty" hidden>No reviews yet. Be the first to write one.</div>
+  </div>
+
   <div class="disclosure">
-    Science Hound is a demo library. Accounts, passwords, and videos are all stored locally in this
-    browser (not on a shared server or encrypted), so uploads and sign-ups made here are only visible
-    on this device.
+    Science Hound is a demo library. Accounts, passwords, videos, and reviews are all stored locally in
+    this browser (not on a shared server or encrypted), so uploads, sign-ups, and reviews made here are
+    only visible on this device. Reviews are automatically filtered for offensive language.
   </div>
 </main>
 
@@ -392,6 +437,25 @@
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
   }
 
+  // ---------- Reviews ----------
+  const REVIEWS_KEY = "sh_reviews";
+  const BAD_WORDS = [
+    "fuck", "shit", "bitch", "asshole", "bastard", "dick", "piss",
+    "cunt", "cock", "pussy", "slut", "whore", "damn", "crap", "hell"
+  ];
+  const BAD_WORDS_RE = new RegExp("\\b(" + BAD_WORDS.join("|") + ")\\b", "gi");
+
+  function censor(text) {
+    return text.replace(BAD_WORDS_RE, (match) => "*".repeat(match.length));
+  }
+
+  function getReviews() {
+    try { return JSON.parse(localStorage.getItem(REVIEWS_KEY)) || []; } catch (e) { return []; }
+  }
+  function saveReviews(reviews) {
+    localStorage.setItem(REVIEWS_KEY, JSON.stringify(reviews));
+  }
+
   // ---------- Elements ----------
   const authScreen = document.getElementById("authScreen");
   const mainScreen = document.getElementById("mainScreen");
@@ -401,6 +465,12 @@
   const videoGrid = document.getElementById("videoGrid");
   const emptyState = document.getElementById("emptyState");
   const countHint = document.getElementById("countHint");
+
+  const reviewList = document.getElementById("reviewList");
+  const reviewEmpty = document.getElementById("reviewEmpty");
+  const reviewCountHint = document.getElementById("reviewCountHint");
+  const reviewText = document.getElementById("reviewText");
+  const reviewError = document.getElementById("reviewError");
 
   const signInForm = document.getElementById("signInForm");
   const signUpForm = document.getElementById("signUpForm");
@@ -503,6 +573,23 @@
     await renderLibrary();
   });
 
+  document.getElementById("reviewSubmit").addEventListener("click", () => {
+    const session = getSession();
+    const text = reviewText.value.trim();
+
+    if (!text) {
+      reviewError.textContent = "Please write a review before posting.";
+      return;
+    }
+    reviewError.textContent = "";
+
+    const reviews = getReviews();
+    reviews.push({ name: session.name, text: censor(text), date: Date.now() });
+    saveReviews(reviews);
+    reviewText.value = "";
+    renderReviews();
+  });
+
   function formatDate(ts) {
     return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
@@ -563,6 +650,43 @@
     });
   }
 
+  function renderReviews() {
+    const reviews = getReviews().sort((a, b) => b.date - a.date);
+
+    reviewCountHint.textContent = reviews.length
+      ? `${reviews.length} review${reviews.length === 1 ? "" : "s"}`
+      : "";
+    reviewEmpty.hidden = reviews.length !== 0;
+    reviewList.innerHTML = "";
+
+    reviews.forEach((r) => {
+      const card = document.createElement("div");
+      card.className = "review-card";
+
+      const head = document.createElement("div");
+      head.className = "review-head";
+
+      const name = document.createElement("span");
+      name.className = "review-name";
+      name.textContent = r.name;
+      head.appendChild(name);
+
+      const date = document.createElement("span");
+      date.className = "review-date";
+      date.textContent = formatDate(r.date);
+      head.appendChild(date);
+
+      card.appendChild(head);
+
+      const text = document.createElement("div");
+      text.className = "review-text";
+      text.textContent = r.text;
+      card.appendChild(text);
+
+      reviewList.appendChild(card);
+    });
+  }
+
   async function render() {
     const session = getSession();
 
@@ -585,6 +709,7 @@
     uploadPanel.hidden = !isAdmin;
 
     await renderLibrary();
+    renderReviews();
   }
 
   render();
