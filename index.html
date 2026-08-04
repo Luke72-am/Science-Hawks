@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chemistry Sim</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --accent: #22d3ee;
+    --accent-dark: #0891b2;
+    --text: #e2e8f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 20%, #1e293b, var(--bg));
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--text);
+  }
+  .card {
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 48px 40px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    max-width: 420px;
+    width: 90%;
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 1.75rem;
+  }
+  p {
+    margin: 0 0 28px;
+    color: #94a3b8;
+  }
+  #flask {
+    font-size: 3rem;
+    display: inline-block;
+    margin-bottom: 12px;
+    transition: transform 0.4s ease;
+  }
+  #flask.react {
+    animation: bubble 0.6s ease-in-out;
+  }
+  @keyframes bubble {
+    0%   { transform: scale(1) rotate(0deg); }
+    30%  { transform: scale(1.2) rotate(-8deg); }
+    60%  { transform: scale(0.95) rotate(6deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+  button {
+    background: var(--accent);
+    color: #0f172a;
+    border: none;
+    padding: 14px 32px;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease;
+  }
+  button:hover { background: var(--accent-dark); color: var(--text); }
+  button:active { transform: scale(0.96); }
+  #result {
+    margin-top: 20px;
+    min-height: 1.5rem;
+    font-size: 0.95rem;
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div id="flask">🧪</div>
+    <h1>Chemistry Sim</h1>
+    <p>Click the button to run a reaction.</p>
+    <button id="reactBtn">React!</button>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    const reactions = [
+      "💥 Exothermic reaction! Temperature rising.",
+      "🫧 Bubbles forming — gas released.",
+      "🔵 Solution turned blue. Copper sulfate detected.",
+      "⚡ Reaction complete. Equilibrium reached.",
+      "🌫️ A vapor cloud appears above the flask."
+    ];
+
+    const flask = document.getElementById('flask');
+    const result = document.getElementById('result');
+
+    document.getElementById('reactBtn').addEventListener('click', () => {
+      flask.classList.remove('react');
+      void flask.offsetWidth;
+      flask.classList.add('react');
+      result.textContent = reactions[Math.floor(Math.random() * reactions.length)];
+    });
+  </script>
+</body>
+</html>
