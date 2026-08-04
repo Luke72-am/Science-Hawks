@@ -232,35 +232,43 @@
 <!-- ================= AUTH SCREEN ================= -->
 <div id="authScreen">
   <div class="auth-card">
-    <div id="viewerForm">
-      <h2>Watch for free</h2>
-      <div class="sub">Sign in with your name to get free access to the video library.</div>
+    <div id="signInForm">
+      <h2>Sign in</h2>
+      <div class="sub">Sign in with your username and password to access the video library.</div>
       <div class="field">
-        <label for="viewerName">Your name</label>
-        <input id="viewerName" type="text" placeholder="e.g. Alex" autocomplete="name">
+        <label for="signInUser">Username</label>
+        <input id="signInUser" type="text" autocomplete="username">
       </div>
-      <button class="btn-primary" id="viewerSubmit" style="width:100%;">Sign in &amp; subscribe free</button>
-      <div class="error-msg" id="viewerError"></div>
+      <div class="field">
+        <label for="signInPass">Password</label>
+        <input id="signInPass" type="password" autocomplete="current-password">
+      </div>
+      <button class="btn-primary" id="signInSubmit" style="width:100%;">Sign in</button>
+      <div class="error-msg" id="signInError"></div>
       <div class="toggle-row">
-        Are you the admin? <button class="btn-link" id="showAdmin">Admin sign in</button>
+        New here? <button class="btn-link" id="showSignUp">Create a free account</button>
       </div>
     </div>
 
-    <div id="adminForm" hidden>
-      <h2>Admin sign in</h2>
-      <div class="sub">Upload and manage the video library.</div>
+    <div id="signUpForm" hidden>
+      <h2>Create a free account</h2>
+      <div class="sub">Sign up for free access to the video library.</div>
       <div class="field">
-        <label for="adminUser">Username</label>
-        <input id="adminUser" type="text" autocomplete="username">
+        <label for="signUpUser">Choose a username</label>
+        <input id="signUpUser" type="text" autocomplete="username">
       </div>
       <div class="field">
-        <label for="adminPass">Password</label>
-        <input id="adminPass" type="password" autocomplete="current-password">
+        <label for="signUpPass">Choose a password</label>
+        <input id="signUpPass" type="password" autocomplete="new-password">
       </div>
-      <button class="btn-primary" id="adminSubmit" style="width:100%;">Sign in</button>
-      <div class="error-msg" id="adminError"></div>
+      <div class="field">
+        <label for="signUpPass2">Confirm password</label>
+        <input id="signUpPass2" type="password" autocomplete="new-password">
+      </div>
+      <button class="btn-primary" id="signUpSubmit" style="width:100%;">Create account &amp; subscribe free</button>
+      <div class="error-msg" id="signUpError"></div>
       <div class="toggle-row">
-        <button class="btn-link" id="showViewer">Back to viewer sign in</button>
+        Already have an account? <button class="btn-link" id="showSignIn">Sign in</button>
       </div>
     </div>
   </div>
@@ -291,8 +299,9 @@
   <div class="empty" id="emptyState" hidden>No videos yet. Check back soon.</div>
 
   <div class="disclosure">
-    Science Hound is a demo library. Videos are stored locally in this browser (not on a shared server),
-    so uploads made here are only visible on this device.
+    Science Hound is a demo library. Accounts, passwords, and videos are all stored locally in this
+    browser (not on a shared server or encrypted), so uploads and sign-ups made here are only visible
+    on this device.
   </div>
 </main>
 
@@ -303,6 +312,7 @@
   const ADMIN_USER = "Luke";
   const ADMIN_PASS = "3113";
   const SESSION_KEY = "sh_session";
+  const USERS_KEY = "sh_users";
 
   // ---------- IndexedDB ----------
   let db;
@@ -353,6 +363,14 @@
     localStorage.removeItem(SESSION_KEY);
   }
 
+  // ---------- Viewer accounts ----------
+  function getUsers() {
+    try { return JSON.parse(localStorage.getItem(USERS_KEY)) || {}; } catch (e) { return {}; }
+  }
+  function saveUsers(users) {
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  }
+
   // ---------- Elements ----------
   const authScreen = document.getElementById("authScreen");
   const mainScreen = document.getElementById("mainScreen");
@@ -363,41 +381,74 @@
   const emptyState = document.getElementById("emptyState");
   const countHint = document.getElementById("countHint");
 
-  const viewerForm = document.getElementById("viewerForm");
-  const adminForm = document.getElementById("adminForm");
+  const signInForm = document.getElementById("signInForm");
+  const signUpForm = document.getElementById("signUpForm");
 
-  document.getElementById("showAdmin").addEventListener("click", () => {
-    viewerForm.hidden = true;
-    adminForm.hidden = false;
+  document.getElementById("showSignUp").addEventListener("click", () => {
+    signInForm.hidden = true;
+    signUpForm.hidden = false;
   });
-  document.getElementById("showViewer").addEventListener("click", () => {
-    adminForm.hidden = true;
-    viewerForm.hidden = false;
+  document.getElementById("showSignIn").addEventListener("click", () => {
+    signUpForm.hidden = true;
+    signInForm.hidden = false;
   });
 
-  document.getElementById("viewerSubmit").addEventListener("click", () => {
-    const name = document.getElementById("viewerName").value.trim();
-    const errorEl = document.getElementById("viewerError");
-    if (!name) {
-      errorEl.textContent = "Please enter your name.";
+  document.getElementById("signInSubmit").addEventListener("click", () => {
+    const user = document.getElementById("signInUser").value.trim();
+    const pass = document.getElementById("signInPass").value;
+    const errorEl = document.getElementById("signInError");
+
+    if (!user || !pass) {
+      errorEl.textContent = "Please enter a username and password.";
       return;
     }
-    errorEl.textContent = "";
-    setSession({ role: "viewer", name });
-    render();
-  });
 
-  document.getElementById("adminSubmit").addEventListener("click", () => {
-    const user = document.getElementById("adminUser").value.trim();
-    const pass = document.getElementById("adminPass").value;
-    const errorEl = document.getElementById("adminError");
     if (user === ADMIN_USER && pass === ADMIN_PASS) {
       errorEl.textContent = "";
       setSession({ role: "admin", name: ADMIN_USER });
       render();
+      return;
+    }
+
+    const users = getUsers();
+    if (users[user] && users[user] === pass) {
+      errorEl.textContent = "";
+      setSession({ role: "viewer", name: user });
+      render();
     } else {
       errorEl.textContent = "Incorrect username or password.";
     }
+  });
+
+  document.getElementById("signUpSubmit").addEventListener("click", () => {
+    const user = document.getElementById("signUpUser").value.trim();
+    const pass = document.getElementById("signUpPass").value;
+    const pass2 = document.getElementById("signUpPass2").value;
+    const errorEl = document.getElementById("signUpError");
+
+    if (!user || !pass) {
+      errorEl.textContent = "Please choose a username and password.";
+      return;
+    }
+    if (pass !== pass2) {
+      errorEl.textContent = "Passwords don't match.";
+      return;
+    }
+    if (user.toLowerCase() === ADMIN_USER.toLowerCase()) {
+      errorEl.textContent = "That username is reserved.";
+      return;
+    }
+    const users = getUsers();
+    if (users[user]) {
+      errorEl.textContent = "That username is already taken.";
+      return;
+    }
+
+    users[user] = pass;
+    saveUsers(users);
+    errorEl.textContent = "";
+    setSession({ role: "viewer", name: user });
+    render();
   });
 
   document.getElementById("signOutBtn").addEventListener("click", () => {
@@ -490,8 +541,8 @@
       authScreen.hidden = false;
       mainScreen.hidden = true;
       whoBox.hidden = true;
-      viewerForm.hidden = false;
-      adminForm.hidden = true;
+      signInForm.hidden = false;
+      signUpForm.hidden = true;
       return;
     }
 
