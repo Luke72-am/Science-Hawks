@@ -191,11 +191,26 @@
     padding: 18px 20px;
     margin-bottom: 28px;
     display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    align-items: flex-end;
+    flex-direction: column;
+    gap: 14px;
   }
-  .upload-panel .field { margin-bottom: 0; flex: 1 1 200px; }
+  .upload-panel .field { margin-bottom: 0; }
+  .upload-row { display: flex; flex-wrap: wrap; gap: 12px; }
+  .upload-row .field { flex: 1 1 200px; }
+  .day-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+  .day-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 11px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg);
+  }
+  .day-chip input { width: auto; accent-color: var(--accent); }
 
   .grid {
     display: grid;
@@ -212,6 +227,7 @@
   }
   .card video { width: 100%; display: block; background: #000; aspect-ratio: 16/9; }
   .card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .card-body .title-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .card-body .title { font-weight: 600; }
   .card-body .meta { font-size: 0.78rem; color: var(--muted); }
   .card-body .row { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
@@ -329,15 +345,32 @@
 <main id="mainScreen" hidden>
 
   <div class="upload-panel" id="uploadPanel" hidden>
-    <div class="field">
-      <label for="videoTitle">Video title</label>
-      <input id="videoTitle" type="text" placeholder="e.g. Density Tower Demo">
+    <div class="upload-row">
+      <div class="field">
+        <label for="videoTitle">Video title</label>
+        <input id="videoTitle" type="text" placeholder="e.g. Density Tower Demo">
+      </div>
+      <div class="field">
+        <label for="videoFile">Video file</label>
+        <input id="videoFile" type="file" accept="video/*">
+      </div>
     </div>
     <div class="field">
-      <label for="videoFile">Video file</label>
-      <input id="videoFile" type="file" accept="video/*">
+      <label>Release schedule (optional)</label>
+      <div class="day-picker" id="dayPicker">
+        <label class="day-chip"><input type="checkbox" value="0"> Sun</label>
+        <label class="day-chip"><input type="checkbox" value="1"> Mon</label>
+        <label class="day-chip"><input type="checkbox" value="2"> Tue</label>
+        <label class="day-chip"><input type="checkbox" value="3"> Wed</label>
+        <label class="day-chip"><input type="checkbox" value="4"> Thu</label>
+        <label class="day-chip"><input type="checkbox" value="5"> Fri</label>
+        <label class="day-chip"><input type="checkbox" value="6"> Sat</label>
+      </div>
+      <div class="hint">Leave unchecked to publish right away. Otherwise the video stays hidden from
+        viewers until the next checked day of the week, then stays visible from then on — repeating
+        every week.</div>
     </div>
-    <button class="btn-primary" id="uploadBtn">Upload video</button>
+    <button class="btn-primary" id="uploadBtn" style="align-self: flex-start;">Upload video</button>
   </div>
   <div class="error-msg" id="uploadError"></div>
 
@@ -414,10 +447,10 @@
     req.onerror = () => reject(req.error);
   });
 
-  function addVideo(title, blob) {
+  function addVideo(title, blob, releaseDays) {
     return dbReady.then(() => new Promise((resolve, reject) => {
       const tx = db.transaction("videos", "readwrite");
-      tx.objectStore("videos").add({ title, blob, uploadedAt: Date.now() });
+      tx.objectStore("videos").add({ title, blob, uploadedAt: Date.now(), releaseDays: releaseDays || [] });
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     }));
@@ -590,6 +623,7 @@
     const titleInput = document.getElementById("videoTitle");
     const fileInput = document.getElementById("videoFile");
     const errorEl = document.getElementById("uploadError");
+    const dayCheckboxes = document.querySelectorAll('#dayPicker input[type="checkbox"]');
     const title = titleInput.value.trim();
     const file = fileInput.files[0];
 
@@ -598,9 +632,13 @@
       return;
     }
     errorEl.textContent = "";
-    await addVideo(title, file);
+    const releaseDays = Array.from(dayCheckboxes)
+      .filter((cb) => cb.checked)
+      .map((cb) => parseInt(cb.value, 10));
+    await addVideo(title, file, releaseDays);
     titleInput.value = "";
     fileInput.value = "";
+    dayCheckboxes.forEach((cb) => { cb.checked = false; });
     await renderLibrary();
   });
 
@@ -625,10 +663,33 @@
     return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
 
+  const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  function getReleaseDate(video) {
+    if (!video.releaseDays || video.releaseDays.length === 0) return null;
+    const start = new Date(video.uploadedAt);
+    start.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      if (video.releaseDays.includes(d.getDay())) return d;
+    }
+    return start;
+  }
+
+  function isReleased(video) {
+    const releaseDate = getReleaseDate(video);
+    if (!releaseDate) return true;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today >= releaseDate;
+  }
+
   async function renderLibrary() {
     const session = getSession();
     const isAdmin = session && session.role === "admin";
-    const videos = await getAllVideos();
+    const allVideos = await getAllVideos();
+    const videos = isAdmin ? allVideos : allVideos.filter(isReleased);
 
     countHint.textContent = videos.length
       ? `${videos.length} video${videos.length === 1 ? "" : "s"}`
@@ -637,6 +698,7 @@
     videoGrid.innerHTML = "";
 
     videos.forEach((v) => {
+      const released = isReleased(v);
       const url = URL.createObjectURL(v.blob);
       const card = document.createElement("div");
       card.className = "card";
@@ -650,15 +712,34 @@
       const body = document.createElement("div");
       body.className = "card-body";
 
-      const title = document.createElement("div");
+      const titleRow = document.createElement("div");
+      titleRow.className = "title-row";
+      const title = document.createElement("span");
       title.className = "title";
       title.textContent = v.title;
-      body.appendChild(title);
+      titleRow.appendChild(title);
+      if (isAdmin && !released) {
+        const pill = document.createElement("span");
+        pill.className = "pill";
+        pill.textContent = "Scheduled";
+        titleRow.appendChild(pill);
+      }
+      body.appendChild(titleRow);
 
       const meta = document.createElement("div");
       meta.className = "meta";
       meta.textContent = `Uploaded ${formatDate(v.uploadedAt)}`;
       body.appendChild(meta);
+
+      if (v.releaseDays && v.releaseDays.length > 0) {
+        const dayLabels = v.releaseDays.slice().sort().map((d) => DAY_NAMES[d]).join(", ");
+        const scheduleMeta = document.createElement("div");
+        scheduleMeta.className = "meta";
+        scheduleMeta.textContent = released
+          ? `Repeats: ${dayLabels}`
+          : `Releases ${formatDate(getReleaseDate(v))} · repeats ${dayLabels}`;
+        body.appendChild(scheduleMeta);
+      }
 
       if (isAdmin) {
         const row = document.createElement("div");
