@@ -496,9 +496,10 @@
   </div>
 
   <div class="disclosure">
-    Science Hound is a demo library. Accounts, passwords, videos, and reviews are all stored locally in
-    this browser (not on a shared server or encrypted), so uploads, sign-ups, and reviews made here are
-    only visible on this device. Reviews are automatically filtered for offensive language.
+    Science Hound is backed by a local server. Accounts, videos, and reviews are stored server-side
+    (passwords are hashed, never stored in plain text), so everyone connecting to this server sees the
+    same library, from any device. This is a basic local setup, not a hosted production service, so it
+    only runs while the server is running. Reviews are automatically filtered for offensive language.
   </div>
 </main>
 
@@ -506,10 +507,7 @@
 (function () {
   "use strict";
 
-  const ADMIN_USER = "Luke";
-  const ADMIN_PASS = "3113";
-  const SESSION_KEY = "sh_session";
-  const USERS_KEY = "sh_users";
+  let currentUser = null;
 
   // Two-click confirm (window.confirm() is blocked in sandboxed frames)
   function armConfirmButton(btn, onConfirm) {
@@ -533,153 +531,20 @@
     });
   }
 
-  // ---------- IndexedDB ----------
-  let db;
-  const dbReady = new Promise((resolve, reject) => {
-    const req = indexedDB.open("scienceHoundDB", 2);
-    req.onupgradeneeded = () => {
-      const upgradeDb = req.result;
-      if (!upgradeDb.objectStoreNames.contains("videos")) {
-        upgradeDb.createObjectStore("videos", { keyPath: "id", autoIncrement: true });
-      }
-      if (!upgradeDb.objectStoreNames.contains("introVideo")) {
-        upgradeDb.createObjectStore("introVideo", { keyPath: "key" });
-      }
-    };
-    req.onsuccess = () => { db = req.result; resolve(); };
-    req.onerror = () => reject(req.error);
-  });
-
-  function addVideo(title, blob, releaseDays) {
-    return dbReady.then(() => new Promise((resolve, reject) => {
-      const tx = db.transaction("videos", "readwrite");
-      tx.objectStore("videos").add({ title, blob, uploadedAt: Date.now(), releaseDays: releaseDays || [] });
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    }));
-  }
-
-  function deleteVideo(id) {
-    return dbReady.then(() => new Promise((resolve, reject) => {
-      const tx = db.transaction("videos", "readwrite");
-      tx.objectStore("videos").delete(id);
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    }));
-  }
-
-  function clearVideoSchedule(id) {
-    return dbReady.then(() => new Promise((resolve, reject) => {
-      const tx = db.transaction("videos", "readwrite");
-      const store = tx.objectStore("videos");
-      const getReq = store.get(id);
-      getReq.onsuccess = () => {
-        const record = getReq.result;
-        if (record) {
-          record.releaseDays = [];
-          store.put(record);
-        }
-      };
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    }));
-  }
-
-  function setIntroVideo(blob) {
-    return dbReady.then(() => new Promise((resolve, reject) => {
-      const tx = db.transaction("introVideo", "readwrite");
-      tx.objectStore("introVideo").put({ key: "intro", blob, uploadedAt: Date.now() });
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    }));
-  }
-
-  function getIntroVideo() {
-    return dbReady.then(() => new Promise((resolve, reject) => {
-      const tx = db.transaction("introVideo", "readonly");
-      const req = tx.objectStore("introVideo").get("intro");
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    }));
-  }
-
-  function deleteIntroVideo() {
-    return dbReady.then(() => new Promise((resolve, reject) => {
-      const tx = db.transaction("introVideo", "readwrite");
-      tx.objectStore("introVideo").delete("intro");
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    }));
-  }
-
-  function getAllVideos() {
-    return dbReady.then(() => new Promise((resolve, reject) => {
-      const tx = db.transaction("videos", "readonly");
-      const req = tx.objectStore("videos").getAll();
-      req.onsuccess = () => resolve(req.result.sort((a, b) => b.uploadedAt - a.uploadedAt));
-      req.onerror = () => reject(req.error);
-    }));
-  }
-
-  // ---------- Session ----------
-  function getSession() {
-    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch (e) { return null; }
-  }
-  function setSession(session) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  }
-  function clearSession() {
-    localStorage.removeItem(SESSION_KEY);
-  }
-
-  // ---------- Viewer accounts ----------
-  function getUsers() {
-    try { return JSON.parse(localStorage.getItem(USERS_KEY)) || {}; } catch (e) { return {}; }
-  }
-  function saveUsers(users) {
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  }
-
-  // ---------- Reviews ----------
-  const REVIEWS_KEY = "sh_reviews";
-  if (!localStorage.getItem("sh_reviews_reset_v1")) {
-    localStorage.removeItem(REVIEWS_KEY);
-    localStorage.setItem("sh_reviews_reset_v1", "1");
-  }
-  const BAD_WORDS = [
-    "fuck", "shit", "bitch", "asshole", "bastard", "dick", "piss",
-    "cunt", "cock", "pussy", "slut", "whore", "damn", "crap", "hell"
-  ];
-  const BAD_WORDS_RE = new RegExp("\\b(" + BAD_WORDS.join("|") + ")\\b", "gi");
-
-  function censor(text) {
-    return text.replace(BAD_WORDS_RE, (match) => "*".repeat(match.length));
-  }
-
-  function makeId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-  }
-
-  function getReviews() {
-    try { return JSON.parse(localStorage.getItem(REVIEWS_KEY)) || []; } catch (e) { return []; }
-  }
-  function saveReviews(reviews) {
-    localStorage.setItem(REVIEWS_KEY, JSON.stringify(reviews));
-  }
-
-  // ---------- Intro description ----------
-  const INTRO_TEXT_KEY = "sh_intro_text";
-  const DEFAULT_INTRO_TEXT = [
-    "Hello, my name is Luke, and I have created this website to support the local community and provide free education for children, especially homeschoolers. This website provides free access to 30 minute videos, created by yours truly, of science, STEM, space and physics. All of my information comes directly from these PUBLIC DOMAIN TEXTBOOKS (enter names here). Every Tuesday and Thursday I release my videos, for you to watch and have complete access to forever.",
-    "Every Tuesday I release a video covering chemistry and STEM related topics. First we will cover the bonds between atoms and molecules, how they all work. Then we will cover different kinds of popular chemical compounds and bonds, and their uses in later videos. Thursdays I release space and physics related videos. We will cover astronomy, how stars and black holes work, the true scale of the universe, and much more. Now I have much more content on chemistry though, and once I run out of space like content after a few months, maybe more, I will start covering chemistry in ALL released videos after that.",
-    "Now keep in mind I am not qualified or certified for this, I am only a teen. But my sources are very reliable and these topics are my passion. Lastly, this is a strictly CLEAN, and Christian site, no language or inappropriate content, this website is meant to serve the community, and The Lord. If you have any questions, comments or concerns, watch the video below. Or you can reach me at Travelingtreasures12345@gmail.com, or you can leave a review highlighting your thoughts. Thank you God be with you all."
-  ].join("\n\n");
-
-  function getIntroText() {
-    return localStorage.getItem(INTRO_TEXT_KEY) || DEFAULT_INTRO_TEXT;
-  }
-  function saveIntroText(text) {
-    localStorage.setItem(INTRO_TEXT_KEY, text);
+  // ---------- Backend API ----------
+  async function api(path, { method = "GET", json, form } = {}) {
+    const opts = { method, credentials: "same-origin" };
+    if (json !== undefined) {
+      opts.headers = { "Content-Type": "application/json" };
+      opts.body = JSON.stringify(json);
+    } else if (form !== undefined) {
+      opts.body = form;
+    }
+    const res = await fetch(path, opts);
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* no body */ }
+    if (!res.ok) throw new Error(data.error || "Something went wrong.");
+    return data;
   }
 
   function escapeHtml(s) {
@@ -690,19 +555,11 @@
       .replace(/([\w.+-]+@[\w-]+\.[\w.-]+)/g, '<a href="mailto:$1">$1</a>')
       .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   }
-
-  function renderIntroText() {
-    const display = document.getElementById("introTextDisplay");
-    display.innerHTML = "";
-    getIntroText().split(/\n{2,}/).forEach((paragraph) => {
-      const trimmed = paragraph.trim();
-      if (!trimmed) return;
-      const p = document.createElement("p");
-      p.className = "intro-text";
-      p.innerHTML = linkify(escapeHtml(trimmed));
-      display.appendChild(p);
-    });
+  function formatDate(ts) {
+    return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
+
+  const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   // ---------- Elements ----------
   const authScreen = document.getElementById("authScreen");
@@ -725,6 +582,12 @@
   const tabLogIn = document.getElementById("tabLogIn");
   const tabSignUp = document.getElementById("tabSignUp");
 
+  const introTextDisplay = document.getElementById("introTextDisplay");
+  const introTextEditor = document.getElementById("introTextEditor");
+  const introEditRow = document.getElementById("introEditRow");
+  const introTextInput = document.getElementById("introTextInput");
+  const introTextError = document.getElementById("introTextError");
+
   function showLogIn() {
     signInForm.hidden = false;
     signUpForm.hidden = true;
@@ -740,7 +603,7 @@
   tabLogIn.addEventListener("click", showLogIn);
   tabSignUp.addEventListener("click", showSignUp);
 
-  document.getElementById("signInSubmit").addEventListener("click", () => {
+  document.getElementById("signInSubmit").addEventListener("click", async () => {
     const user = document.getElementById("signInUser").value.trim();
     const pass = document.getElementById("signInPass").value;
     const errorEl = document.getElementById("signInError");
@@ -749,25 +612,17 @@
       errorEl.textContent = "Please enter a username and password.";
       return;
     }
-
-    if (user === ADMIN_USER && pass === ADMIN_PASS) {
+    try {
+      const data = await api("/api/login", { method: "POST", json: { username: user, password: pass } });
       errorEl.textContent = "";
-      setSession({ role: "admin", name: ADMIN_USER });
+      currentUser = data.user;
       render();
-      return;
-    }
-
-    const users = getUsers();
-    if (users[user] && users[user] === pass) {
-      errorEl.textContent = "";
-      setSession({ role: "viewer", name: user });
-      render();
-    } else {
-      errorEl.textContent = "Incorrect username or password.";
+    } catch (e) {
+      errorEl.textContent = e.message;
     }
   });
 
-  document.getElementById("signUpSubmit").addEventListener("click", () => {
+  document.getElementById("signUpSubmit").addEventListener("click", async () => {
     const user = document.getElementById("signUpUser").value.trim();
     const pass = document.getElementById("signUpPass").value;
     const pass2 = document.getElementById("signUpPass2").value;
@@ -781,25 +636,19 @@
       errorEl.textContent = "Passwords don't match.";
       return;
     }
-    if (user.toLowerCase() === ADMIN_USER.toLowerCase()) {
-      errorEl.textContent = "That username is reserved.";
-      return;
+    try {
+      const data = await api("/api/signup", { method: "POST", json: { username: user, password: pass } });
+      errorEl.textContent = "";
+      currentUser = data.user;
+      render();
+    } catch (e) {
+      errorEl.textContent = e.message;
     }
-    const users = getUsers();
-    if (users[user]) {
-      errorEl.textContent = "That username is already taken.";
-      return;
-    }
-
-    users[user] = pass;
-    saveUsers(users);
-    errorEl.textContent = "";
-    setSession({ role: "viewer", name: user });
-    render();
   });
 
-  document.getElementById("signOutBtn").addEventListener("click", () => {
-    clearSession();
+  document.getElementById("signOutBtn").addEventListener("click", async () => {
+    await api("/api/logout", { method: "POST" });
+    currentUser = null;
     render();
   });
 
@@ -815,15 +664,25 @@
       errorEl.textContent = "Please add a title and choose a video file.";
       return;
     }
-    errorEl.textContent = "";
     const releaseDays = Array.from(dayCheckboxes)
       .filter((cb) => cb.checked)
       .map((cb) => parseInt(cb.value, 10));
-    await addVideo(title, file, releaseDays);
-    titleInput.value = "";
-    fileInput.value = "";
-    dayCheckboxes.forEach((cb) => { cb.checked = false; });
-    await renderLibrary();
+
+    const form = new FormData();
+    form.append("title", title);
+    form.append("video", file);
+    form.append("releaseDays", JSON.stringify(releaseDays));
+
+    try {
+      await api("/api/videos", { method: "POST", form });
+      errorEl.textContent = "";
+      titleInput.value = "";
+      fileInput.value = "";
+      dayCheckboxes.forEach((cb) => { cb.checked = false; });
+      await renderLibrary();
+    } catch (e) {
+      errorEl.textContent = e.message;
+    }
   });
 
   document.getElementById("introVideoUploadBtn").addEventListener("click", async () => {
@@ -835,25 +694,27 @@
       errorEl.textContent = "Please choose a video file.";
       return;
     }
-    errorEl.textContent = "";
-    await setIntroVideo(file);
-    fileInput.value = "";
-    await renderIntroVideo();
+    const form = new FormData();
+    form.append("video", file);
+
+    try {
+      await api("/api/intro-video", { method: "POST", form });
+      errorEl.textContent = "";
+      fileInput.value = "";
+      await renderIntroVideo();
+    } catch (e) {
+      errorEl.textContent = e.message;
+    }
   });
 
   armConfirmButton(document.getElementById("introVideoRemoveBtn"), async () => {
-    await deleteIntroVideo();
+    await api("/api/intro-video", { method: "DELETE" });
     await renderIntroVideo();
   });
 
-  const introTextDisplay = document.getElementById("introTextDisplay");
-  const introTextEditor = document.getElementById("introTextEditor");
-  const introEditRow = document.getElementById("introEditRow");
-  const introTextInput = document.getElementById("introTextInput");
-  const introTextError = document.getElementById("introTextError");
-
-  document.getElementById("introEditBtn").addEventListener("click", () => {
-    introTextInput.value = getIntroText();
+  document.getElementById("introEditBtn").addEventListener("click", async () => {
+    const { text } = await api("/api/intro");
+    introTextInput.value = text;
     introTextError.textContent = "";
     introTextDisplay.hidden = true;
     introEditRow.hidden = true;
@@ -866,75 +727,64 @@
     introEditRow.hidden = false;
   });
 
-  document.getElementById("introTextSaveBtn").addEventListener("click", () => {
+  document.getElementById("introTextSaveBtn").addEventListener("click", async () => {
     const value = introTextInput.value.trim();
     if (!value) {
       introTextError.textContent = "Description can't be empty.";
       return;
     }
-    introTextError.textContent = "";
-    saveIntroText(value);
-    introTextEditor.hidden = true;
-    introTextDisplay.hidden = false;
-    introEditRow.hidden = false;
-    renderIntroText();
+    try {
+      await api("/api/intro", { method: "PUT", json: { text: value } });
+      introTextError.textContent = "";
+      introTextEditor.hidden = true;
+      introTextDisplay.hidden = false;
+      introEditRow.hidden = false;
+      await renderIntroText();
+    } catch (e) {
+      introTextError.textContent = e.message;
+    }
   });
 
-  document.getElementById("reviewSubmit").addEventListener("click", () => {
-    const session = getSession();
+  document.getElementById("reviewSubmit").addEventListener("click", async () => {
     const text = reviewText.value.trim();
-
     if (!text) {
       reviewError.textContent = "Please write a review before posting.";
       return;
     }
-    reviewError.textContent = "";
-
-    const reviews = getReviews();
-    reviews.push({ id: makeId(), name: session.name, text: censor(text), date: Date.now() });
-    saveReviews(reviews);
-    reviewText.value = "";
-    renderReviews();
+    try {
+      await api("/api/reviews", { method: "POST", json: { text } });
+      reviewError.textContent = "";
+      reviewText.value = "";
+      await renderReviews();
+    } catch (e) {
+      reviewError.textContent = e.message;
+    }
   });
 
-  function formatDate(ts) {
-    return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-  }
-
-  const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-  function getReleaseDate(video) {
-    if (!video.releaseDays || video.releaseDays.length === 0) return null;
-    const start = new Date(video.uploadedAt);
-    start.setHours(0, 0, 0, 0);
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(start);
-      d.setDate(d.getDate() + i);
-      if (video.releaseDays.includes(d.getDay())) return d;
-    }
-    return start;
-  }
-
-  function isReleased(video) {
-    const releaseDate = getReleaseDate(video);
-    if (!releaseDate) return true;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return today >= releaseDate;
+  async function renderIntroText() {
+    const { text } = await api("/api/intro");
+    introTextDisplay.innerHTML = "";
+    text.split(/\n{2,}/).forEach((paragraph) => {
+      const trimmed = paragraph.trim();
+      if (!trimmed) return;
+      const p = document.createElement("p");
+      p.className = "intro-text";
+      p.innerHTML = linkify(escapeHtml(trimmed));
+      introTextDisplay.appendChild(p);
+    });
   }
 
   async function renderIntroVideo() {
-    const session = getSession();
-    const isAdmin = session && session.role === "admin";
+    const isAdmin = currentUser && currentUser.role === "admin";
     const area = document.getElementById("introVideoArea");
     const adminControls = document.getElementById("introVideoAdmin");
     const removeBtn = document.getElementById("introVideoRemoveBtn");
-    const record = await getIntroVideo();
+    const { url } = await api("/api/intro-video");
 
     area.innerHTML = "";
-    if (record && record.blob) {
+    if (url) {
       const video = document.createElement("video");
-      video.src = URL.createObjectURL(record.blob);
+      video.src = url;
       video.controls = true;
       video.preload = "metadata";
       area.appendChild(video);
@@ -951,10 +801,8 @@
   }
 
   async function renderLibrary() {
-    const session = getSession();
-    const isAdmin = session && session.role === "admin";
-    const allVideos = await getAllVideos();
-    const videos = isAdmin ? allVideos : allVideos.filter(isReleased);
+    const isAdmin = currentUser && currentUser.role === "admin";
+    const { videos } = await api("/api/videos");
 
     countHint.textContent = videos.length
       ? `${videos.length} video${videos.length === 1 ? "" : "s"}`
@@ -963,13 +811,12 @@
     videoGrid.innerHTML = "";
 
     videos.forEach((v) => {
-      const released = isReleased(v);
-      const url = URL.createObjectURL(v.blob);
+      const released = v.released;
       const card = document.createElement("div");
       card.className = "card";
 
       const video = document.createElement("video");
-      video.src = url;
+      video.src = v.url;
       video.controls = true;
       video.preload = "metadata";
       card.appendChild(video);
@@ -998,11 +845,12 @@
 
       if (v.releaseDays && v.releaseDays.length > 0) {
         const dayLabels = v.releaseDays.slice().sort().map((d) => DAY_NAMES[d]).join(", ");
+        const releaseTime = new Date(v.releaseDate).getTime();
         const scheduleMeta = document.createElement("div");
         scheduleMeta.className = "meta";
         scheduleMeta.textContent = released
-          ? `Released ${formatDate(getReleaseDate(v).getTime())} (scheduled: ${dayLabels})`
-          : `Releases ${formatDate(getReleaseDate(v).getTime())} (${dayLabels}) — visible to everyone from then on`;
+          ? `Released ${formatDate(releaseTime)} (scheduled: ${dayLabels})`
+          : `Releases ${formatDate(releaseTime)} (${dayLabels}) — visible to everyone from then on`;
         body.appendChild(scheduleMeta);
       }
 
@@ -1014,7 +862,7 @@
         releaseNowBtn.className = "btn-ghost";
         releaseNowBtn.textContent = "Release now";
         armConfirmButton(releaseNowBtn, async () => {
-          await clearVideoSchedule(v.id);
+          await api(`/api/videos/${v.id}/release-now`, { method: "POST" });
           await renderLibrary();
         });
         row.appendChild(releaseNowBtn);
@@ -1023,7 +871,7 @@
         delBtn.className = "btn-danger";
         delBtn.textContent = "Delete";
         armConfirmButton(delBtn, async () => {
-          await deleteVideo(v.id);
+          await api(`/api/videos/${v.id}`, { method: "DELETE" });
           await renderLibrary();
         });
         row.appendChild(delBtn);
@@ -1035,13 +883,8 @@
     });
   }
 
-  function deleteReview(id) {
-    saveReviews(getReviews().filter((r) => r.id !== id));
-  }
-
-  function renderReviews() {
-    const session = getSession();
-    const reviews = getReviews().sort((a, b) => b.date - a.date);
+  async function renderReviews() {
+    const { reviews } = await api("/api/reviews");
 
     reviewCountHint.textContent = reviews.length
       ? `${reviews.length} review${reviews.length === 1 ? "" : "s"}`
@@ -1058,7 +901,7 @@
 
       const name = document.createElement("span");
       name.className = "review-name";
-      name.textContent = r.name;
+      name.textContent = r.username;
       head.appendChild(name);
 
       const date = document.createElement("span");
@@ -1073,15 +916,15 @@
       text.textContent = r.text;
       card.appendChild(text);
 
-      if (session && session.name === r.name) {
+      if (currentUser && currentUser.username === r.username) {
         const actions = document.createElement("div");
         actions.className = "review-actions";
         const delBtn = document.createElement("button");
         delBtn.className = "btn-danger";
         delBtn.textContent = "Delete";
-        armConfirmButton(delBtn, () => {
-          deleteReview(r.id);
-          renderReviews();
+        armConfirmButton(delBtn, async () => {
+          await api(`/api/reviews/${r.id}`, { method: "DELETE" });
+          await renderReviews();
         });
         actions.appendChild(delBtn);
         card.appendChild(actions);
@@ -1092,9 +935,7 @@
   }
 
   async function render() {
-    const session = getSession();
-
-    if (!session) {
+    if (!currentUser) {
       authScreen.hidden = false;
       mainScreen.hidden = true;
       whoBox.hidden = true;
@@ -1106,23 +947,33 @@
     mainScreen.hidden = false;
     whoBox.hidden = false;
 
-    const isAdmin = session.role === "admin";
+    const isAdmin = currentUser.role === "admin";
     whoLabel.innerHTML = isAdmin
-      ? `${session.name} <span class="pill">Admin</span>`
-      : `${session.name} <span class="pill">Free member</span>`;
+      ? `${currentUser.username} <span class="pill">Admin</span>`
+      : `${currentUser.username} <span class="pill">Free member</span>`;
     uploadPanel.hidden = !isAdmin;
 
     introEditRow.hidden = !isAdmin;
     introTextEditor.hidden = true;
     introTextDisplay.hidden = false;
-    renderIntroText();
+    await renderIntroText();
 
     await renderIntroVideo();
     await renderLibrary();
-    renderReviews();
+    await renderReviews();
   }
 
-  render();
+  async function init() {
+    try {
+      const data = await api("/api/session");
+      currentUser = data.user;
+    } catch (e) {
+      currentUser = null;
+    }
+    render();
+  }
+
+  init();
 })();
 </script>
 </body>
