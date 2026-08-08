@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Science Hound</title>
+<title>ScienceHawks</title>
 <style>
   :root {
     --bg: #e6e6e3;
@@ -186,12 +186,6 @@
 
   /* ---------- Intro ---------- */
   .intro-section { margin-bottom: 44px; }
-  .intro-tagline {
-    margin: 0 0 16px;
-    text-align: center;
-    font-size: 1.3rem;
-    color: var(--accent);
-  }
   .intro-card {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -309,22 +303,6 @@
     border-radius: 12px;
   }
 
-  /* ---------- Manage viewers ---------- */
-  .manage-users-section { margin-bottom: 40px; }
-  .user-list { display: flex; flex-direction: column; gap: 8px; }
-  .user-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-  }
-  .user-row .user-name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-  .user-row button { padding: 6px 12px; font-size: 0.85rem; }
-
   /* ---------- Reviews ---------- */
   .reviews-section { margin-top: 44px; }
   .review-form {
@@ -372,7 +350,7 @@
   <div class="brand">
     <div class="badge">SH</div>
     <div>
-      <h1>Science Hound</h1>
+      <h1>ScienceHawks</h1>
       <small>Free video library</small>
     </div>
   </div>
@@ -430,7 +408,6 @@
 <main id="mainScreen" hidden>
 
   <section class="intro-section">
-    <h2 class="intro-tagline">Science Hound, giving your kids free education</h2>
     <div class="intro-card">
       <div class="intro-admin-row" id="introEditRow" hidden>
         <button class="btn-ghost" id="introEditBtn">Edit description</button>
@@ -453,7 +430,7 @@
     </div>
 
     <div class="intro-video-wrap">
-      <h2 class="intro-video-label">What Science Hound Is About</h2>
+      <h2 class="intro-video-label">What ScienceHawks Is About</h2>
       <div id="introVideoArea"></div>
       <div class="intro-video-admin" id="introVideoAdmin" hidden>
         <input type="file" id="introVideoFile" accept="video/*">
@@ -494,14 +471,6 @@
   </div>
   <div class="error-msg" id="uploadError"></div>
 
-  <div class="manage-users-section" id="manageUsersSection" hidden>
-    <div class="section-head">
-      <h2>Manage viewers</h2>
-    </div>
-    <div class="user-list" id="userList"></div>
-    <div class="empty" id="userListEmpty" hidden>No viewer accounts yet.</div>
-  </div>
-
   <div class="section-head">
     <h2>Video library</h2>
     <span class="hint" id="countHint"></span>
@@ -517,7 +486,7 @@
     </div>
 
     <div class="review-form">
-      <textarea id="reviewText" placeholder="What do you think of Science Hound?"></textarea>
+      <textarea id="reviewText" placeholder="What do you think of ScienceHawks?"></textarea>
       <button class="btn-primary" id="reviewSubmit">Post review</button>
       <div class="error-msg" id="reviewError"></div>
     </div>
@@ -527,29 +496,20 @@
   </div>
 
   <div class="disclosure">
-    Science Hound is backed by Supabase — accounts, videos, and reviews are stored securely in the
-    cloud, always available regardless of whether any particular device is on. Reviews are
-    automatically filtered for offensive language.
+    ScienceHawks is a demo library. Accounts, passwords, videos, and reviews are all stored locally in
+    this browser (not on a shared server or encrypted), so uploads, sign-ups, and reviews made here are
+    only visible on this device. Reviews are automatically filtered for offensive language.
   </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (function () {
   "use strict";
 
-  const SUPABASE_URL = "https://ywwhwfkntegwlbvdiyxm.supabase.co";
-  const SUPABASE_ANON_KEY = "sb_publishable_hkmsnOpdDxmzvRYxz2BRPw_GRXvUh8c";
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-  const ADMIN_USERNAME = "Luke";
-  const EMAIL_DOMAIN = "scihound.local";
-
-  let currentUser = null; // { id, username, role: 'admin' | 'viewer' }
-
-  function usernameToEmail(username) {
-    return `${username.toLowerCase()}@${EMAIL_DOMAIN}`;
-  }
+  const ADMIN_USER = "Luke";
+  const ADMIN_PASS = "3113";
+  const SESSION_KEY = "sh_session";
+  const USERS_KEY = "sh_users";
 
   // Two-click confirm (window.confirm() is blocked in sandboxed frames)
   function armConfirmButton(btn, onConfirm) {
@@ -573,6 +533,155 @@
     });
   }
 
+  // ---------- IndexedDB ----------
+  let db;
+  const dbReady = new Promise((resolve, reject) => {
+    const req = indexedDB.open("scienceHoundDB", 2);
+    req.onupgradeneeded = () => {
+      const upgradeDb = req.result;
+      if (!upgradeDb.objectStoreNames.contains("videos")) {
+        upgradeDb.createObjectStore("videos", { keyPath: "id", autoIncrement: true });
+      }
+      if (!upgradeDb.objectStoreNames.contains("introVideo")) {
+        upgradeDb.createObjectStore("introVideo", { keyPath: "key" });
+      }
+    };
+    req.onsuccess = () => { db = req.result; resolve(); };
+    req.onerror = () => reject(req.error);
+  });
+
+  function addVideo(title, blob, releaseDays) {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("videos", "readwrite");
+      tx.objectStore("videos").add({ title, blob, uploadedAt: Date.now(), releaseDays: releaseDays || [] });
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function deleteVideo(id) {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("videos", "readwrite");
+      tx.objectStore("videos").delete(id);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function clearVideoSchedule(id) {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("videos", "readwrite");
+      const store = tx.objectStore("videos");
+      const getReq = store.get(id);
+      getReq.onsuccess = () => {
+        const record = getReq.result;
+        if (record) {
+          record.releaseDays = [];
+          store.put(record);
+        }
+      };
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function setIntroVideo(blob) {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("introVideo", "readwrite");
+      tx.objectStore("introVideo").put({ key: "intro", blob, uploadedAt: Date.now() });
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function getIntroVideo() {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("introVideo", "readonly");
+      const req = tx.objectStore("introVideo").get("intro");
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    }));
+  }
+
+  function deleteIntroVideo() {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("introVideo", "readwrite");
+      tx.objectStore("introVideo").delete("intro");
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function getAllVideos() {
+    return dbReady.then(() => new Promise((resolve, reject) => {
+      const tx = db.transaction("videos", "readonly");
+      const req = tx.objectStore("videos").getAll();
+      req.onsuccess = () => resolve(req.result.sort((a, b) => b.uploadedAt - a.uploadedAt));
+      req.onerror = () => reject(req.error);
+    }));
+  }
+
+  // ---------- Session ----------
+  function getSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch (e) { return null; }
+  }
+  function setSession(session) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  }
+  function clearSession() {
+    localStorage.removeItem(SESSION_KEY);
+  }
+
+  // ---------- Viewer accounts ----------
+  function getUsers() {
+    try { return JSON.parse(localStorage.getItem(USERS_KEY)) || {}; } catch (e) { return {}; }
+  }
+  function saveUsers(users) {
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  }
+
+  // ---------- Reviews ----------
+  const REVIEWS_KEY = "sh_reviews";
+  if (!localStorage.getItem("sh_reviews_reset_v1")) {
+    localStorage.removeItem(REVIEWS_KEY);
+    localStorage.setItem("sh_reviews_reset_v1", "1");
+  }
+  const BAD_WORDS = [
+    "fuck", "shit", "bitch", "asshole", "bastard", "dick", "piss",
+    "cunt", "cock", "pussy", "slut", "whore", "damn", "crap", "hell"
+  ];
+  const BAD_WORDS_RE = new RegExp("\\b(" + BAD_WORDS.join("|") + ")\\b", "gi");
+
+  function censor(text) {
+    return text.replace(BAD_WORDS_RE, (match) => "*".repeat(match.length));
+  }
+
+  function makeId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+
+  function getReviews() {
+    try { return JSON.parse(localStorage.getItem(REVIEWS_KEY)) || []; } catch (e) { return []; }
+  }
+  function saveReviews(reviews) {
+    localStorage.setItem(REVIEWS_KEY, JSON.stringify(reviews));
+  }
+
+  // ---------- Intro description ----------
+  const INTRO_TEXT_KEY = "sh_intro_text";
+  const DEFAULT_INTRO_TEXT = [
+    "Hello, my name is Luke, and I have created this website to support the local community and provide free education for children, especially homeschoolers. This website provides free access to 30 minute videos, created by yours truly, of science, STEM, space and physics. All of my information comes directly from these PUBLIC DOMAIN TEXTBOOKS (enter names here). Every Tuesday and Thursday I release my videos, for you to watch and have complete access to forever.",
+    "Every Tuesday I release a video covering chemistry and STEM related topics. First we will cover the bonds between atoms and molecules, how they all work. Then we will cover different kinds of popular chemical compounds and bonds, and their uses in later videos. Thursdays I release space and physics related videos. We will cover astronomy, how stars and black holes work, the true scale of the universe, and much more. Now I have much more content on chemistry though, and once I run out of space like content after a few months, maybe more, I will start covering chemistry in ALL released videos after that.",
+    "Now keep in mind I am not qualified or certified for this, I am only a teen. But my sources are very reliable and these topics are my passion. Lastly, this is a strictly CLEAN, and Christian site, no language or inappropriate content, this website is meant to serve the community, and The Lord. If you have any questions, comments or concerns, watch the video below. Or you can reach me at Travelingtreasures12345@gmail.com, or you can leave a review highlighting your thoughts. Thank you God be with you all."
+  ].join("\n\n");
+
+  function getIntroText() {
+    return localStorage.getItem(INTRO_TEXT_KEY) || DEFAULT_INTRO_TEXT;
+  }
+  function saveIntroText(text) {
+    localStorage.setItem(INTRO_TEXT_KEY, text);
+  }
+
   function escapeHtml(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
@@ -581,42 +690,18 @@
       .replace(/([\w.+-]+@[\w-]+\.[\w.-]+)/g, '<a href="mailto:$1">$1</a>')
       .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   }
-  function formatDate(ts) {
-    return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-  }
-  function pad2(n) { return String(n).padStart(2, "0"); }
-  function todayDateString() {
-    const d = new Date();
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  }
-  function toDateString(d) {
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  }
-  function parseDateOnly(dateStr) {
-    const [y, m, d] = dateStr.split("-").map(Number);
-    return new Date(y, m - 1, d);
-  }
-  function safeStorageName(originalName) {
-    const dot = originalName.lastIndexOf(".");
-    const ext = dot > -1 ? originalName.slice(dot) : "";
-    return `${crypto.randomUUID()}${ext}`;
-  }
 
-  const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-  function computeReleaseDate(uploadedAtMs, releaseDays) {
-    if (!releaseDays || releaseDays.length === 0) return null;
-    const start = new Date(uploadedAtMs);
-    start.setHours(0, 0, 0, 0);
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(start);
-      d.setDate(d.getDate() + i);
-      if (releaseDays.includes(d.getDay())) return d;
-    }
-    return start;
-  }
-  function isReleased(v) {
-    return !v.release_date || v.release_date <= todayDateString();
+  function renderIntroText() {
+    const display = document.getElementById("introTextDisplay");
+    display.innerHTML = "";
+    getIntroText().split(/\n{2,}/).forEach((paragraph) => {
+      const trimmed = paragraph.trim();
+      if (!trimmed) return;
+      const p = document.createElement("p");
+      p.className = "intro-text";
+      p.innerHTML = linkify(escapeHtml(trimmed));
+      display.appendChild(p);
+    });
   }
 
   // ---------- Elements ----------
@@ -629,10 +714,6 @@
   const emptyState = document.getElementById("emptyState");
   const countHint = document.getElementById("countHint");
 
-  const manageUsersSection = document.getElementById("manageUsersSection");
-  const userList = document.getElementById("userList");
-  const userListEmpty = document.getElementById("userListEmpty");
-
   const reviewList = document.getElementById("reviewList");
   const reviewEmpty = document.getElementById("reviewEmpty");
   const reviewCountHint = document.getElementById("reviewCountHint");
@@ -643,12 +724,6 @@
   const signUpForm = document.getElementById("signUpForm");
   const tabLogIn = document.getElementById("tabLogIn");
   const tabSignUp = document.getElementById("tabSignUp");
-
-  const introTextDisplay = document.getElementById("introTextDisplay");
-  const introTextEditor = document.getElementById("introTextEditor");
-  const introEditRow = document.getElementById("introEditRow");
-  const introTextInput = document.getElementById("introTextInput");
-  const introTextError = document.getElementById("introTextError");
 
   function showLogIn() {
     signInForm.hidden = false;
@@ -665,13 +740,7 @@
   tabLogIn.addEventListener("click", showLogIn);
   tabSignUp.addEventListener("click", showSignUp);
 
-  async function loadProfile(userId) {
-    const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
-    if (error || !data) return null;
-    return { id: userId, username: data.username, role: data.is_admin ? "admin" : "viewer", blocked: data.blocked };
-  }
-
-  document.getElementById("signInSubmit").addEventListener("click", async () => {
+  document.getElementById("signInSubmit").addEventListener("click", () => {
     const user = document.getElementById("signInUser").value.trim();
     const pass = document.getElementById("signInPass").value;
     const errorEl = document.getElementById("signInError");
@@ -680,31 +749,25 @@
       errorEl.textContent = "Please enter a username and password.";
       return;
     }
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: usernameToEmail(user),
-      password: pass
-    });
-    if (error) {
+
+    if (user === ADMIN_USER && pass === ADMIN_PASS) {
+      errorEl.textContent = "";
+      setSession({ role: "admin", name: ADMIN_USER });
+      render();
+      return;
+    }
+
+    const users = getUsers();
+    if (users[user] && users[user] === pass) {
+      errorEl.textContent = "";
+      setSession({ role: "viewer", name: user });
+      render();
+    } else {
       errorEl.textContent = "Incorrect username or password.";
-      return;
     }
-    const profile = await loadProfile(data.user.id);
-    if (!profile) {
-      errorEl.textContent = "Something went wrong loading your account.";
-      await supabase.auth.signOut();
-      return;
-    }
-    if (profile.blocked) {
-      errorEl.textContent = "This account has been blocked.";
-      await supabase.auth.signOut();
-      return;
-    }
-    errorEl.textContent = "";
-    currentUser = profile;
-    render();
   });
 
-  document.getElementById("signUpSubmit").addEventListener("click", async () => {
+  document.getElementById("signUpSubmit").addEventListener("click", () => {
     const user = document.getElementById("signUpUser").value.trim();
     const pass = document.getElementById("signUpPass").value;
     const pass2 = document.getElementById("signUpPass2").value;
@@ -718,35 +781,25 @@
       errorEl.textContent = "Passwords don't match.";
       return;
     }
-    if (pass.length < 6) {
-      errorEl.textContent = "Password must be at least 6 characters.";
+    if (user.toLowerCase() === ADMIN_USER.toLowerCase()) {
+      errorEl.textContent = "That username is reserved.";
       return;
     }
-    const { data, error } = await supabase.auth.signUp({
-      email: usernameToEmail(user),
-      password: pass,
-      options: { data: { username: user } }
-    });
-    if (error) {
-      errorEl.textContent = /registered/i.test(error.message)
-        ? "That username is already taken."
-        : error.message;
+    const users = getUsers();
+    if (users[user]) {
+      errorEl.textContent = "That username is already taken.";
       return;
     }
-    if (!data.session) {
-      errorEl.textContent = "Account created — please log in.";
-      showLogIn();
-      return;
-    }
-    const profile = await loadProfile(data.user.id);
+
+    users[user] = pass;
+    saveUsers(users);
     errorEl.textContent = "";
-    currentUser = profile;
+    setSession({ role: "viewer", name: user });
     render();
   });
 
-  document.getElementById("signOutBtn").addEventListener("click", async () => {
-    await supabase.auth.signOut();
-    currentUser = null;
+  document.getElementById("signOutBtn").addEventListener("click", () => {
+    clearSession();
     render();
   });
 
@@ -762,32 +815,11 @@
       errorEl.textContent = "Please add a title and choose a video file.";
       return;
     }
+    errorEl.textContent = "";
     const releaseDays = Array.from(dayCheckboxes)
       .filter((cb) => cb.checked)
       .map((cb) => parseInt(cb.value, 10));
-
-    const storagePath = safeStorageName(file.name);
-    const { error: upErr } = await supabase.storage.from("videos").upload(storagePath, file);
-    if (upErr) {
-      errorEl.textContent = upErr.message;
-      return;
-    }
-
-    const uploadedAt = new Date();
-    const releaseDateObj = computeReleaseDate(uploadedAt.getTime(), releaseDays);
-    const { error: insErr } = await supabase.from("videos").insert({
-      title,
-      storage_path: storagePath,
-      uploaded_at: uploadedAt.toISOString(),
-      release_days: releaseDays,
-      release_date: releaseDateObj ? toDateString(releaseDateObj) : null
-    });
-    if (insErr) {
-      errorEl.textContent = insErr.message;
-      return;
-    }
-
-    errorEl.textContent = "";
+    await addVideo(title, file, releaseDays);
     titleInput.value = "";
     fileInput.value = "";
     dayCheckboxes.forEach((cb) => { cb.checked = false; });
@@ -803,39 +835,25 @@
       errorEl.textContent = "Please choose a video file.";
       return;
     }
-
-    const { data: current } = await supabase.from("site_settings").select("value").eq("key", "intro_video_path").single();
-    const storagePath = safeStorageName(file.name);
-    const { error: upErr } = await supabase.storage.from("intro-video").upload(storagePath, file);
-    if (upErr) {
-      errorEl.textContent = upErr.message;
-      return;
-    }
-    const { error: updErr } = await supabase.from("site_settings").update({ value: storagePath }).eq("key", "intro_video_path");
-    if (updErr) {
-      errorEl.textContent = updErr.message;
-      return;
-    }
-    if (current && current.value) {
-      await supabase.storage.from("intro-video").remove([current.value]);
-    }
     errorEl.textContent = "";
+    await setIntroVideo(file);
     fileInput.value = "";
     await renderIntroVideo();
   });
 
   armConfirmButton(document.getElementById("introVideoRemoveBtn"), async () => {
-    const { data: current } = await supabase.from("site_settings").select("value").eq("key", "intro_video_path").single();
-    await supabase.from("site_settings").update({ value: null }).eq("key", "intro_video_path");
-    if (current && current.value) {
-      await supabase.storage.from("intro-video").remove([current.value]);
-    }
+    await deleteIntroVideo();
     await renderIntroVideo();
   });
 
-  document.getElementById("introEditBtn").addEventListener("click", async () => {
-    const { data } = await supabase.from("site_settings").select("value").eq("key", "intro_text").single();
-    introTextInput.value = data ? data.value : "";
+  const introTextDisplay = document.getElementById("introTextDisplay");
+  const introTextEditor = document.getElementById("introTextEditor");
+  const introEditRow = document.getElementById("introEditRow");
+  const introTextInput = document.getElementById("introTextInput");
+  const introTextError = document.getElementById("introTextError");
+
+  document.getElementById("introEditBtn").addEventListener("click", () => {
+    introTextInput.value = getIntroText();
     introTextError.textContent = "";
     introTextDisplay.hidden = true;
     introEditRow.hidden = true;
@@ -848,71 +866,75 @@
     introEditRow.hidden = false;
   });
 
-  document.getElementById("introTextSaveBtn").addEventListener("click", async () => {
+  document.getElementById("introTextSaveBtn").addEventListener("click", () => {
     const value = introTextInput.value.trim();
     if (!value) {
       introTextError.textContent = "Description can't be empty.";
       return;
     }
-    const { error } = await supabase.from("site_settings").update({ value }).eq("key", "intro_text");
-    if (error) {
-      introTextError.textContent = error.message;
-      return;
-    }
     introTextError.textContent = "";
+    saveIntroText(value);
     introTextEditor.hidden = true;
     introTextDisplay.hidden = false;
     introEditRow.hidden = false;
-    await renderIntroText();
+    renderIntroText();
   });
 
-  document.getElementById("reviewSubmit").addEventListener("click", async () => {
+  document.getElementById("reviewSubmit").addEventListener("click", () => {
+    const session = getSession();
     const text = reviewText.value.trim();
+
     if (!text) {
       reviewError.textContent = "Please write a review before posting.";
       return;
     }
-    const { error } = await supabase.from("reviews").insert({
-      user_id: currentUser.id,
-      username: currentUser.username,
-      text
-    });
-    if (error) {
-      reviewError.textContent = error.message;
-      return;
-    }
     reviewError.textContent = "";
+
+    const reviews = getReviews();
+    reviews.push({ id: makeId(), name: session.name, text: censor(text), date: Date.now() });
+    saveReviews(reviews);
     reviewText.value = "";
-    await renderReviews();
+    renderReviews();
   });
 
-  async function renderIntroText() {
-    const { data } = await supabase.from("site_settings").select("value").eq("key", "intro_text").single();
-    const text = data ? data.value : "";
-    introTextDisplay.innerHTML = "";
-    text.split(/\n{2,}/).forEach((paragraph) => {
-      const trimmed = paragraph.trim();
-      if (!trimmed) return;
-      const p = document.createElement("p");
-      p.className = "intro-text";
-      p.innerHTML = linkify(escapeHtml(trimmed));
-      introTextDisplay.appendChild(p);
-    });
+  function formatDate(ts) {
+    return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  function getReleaseDate(video) {
+    if (!video.releaseDays || video.releaseDays.length === 0) return null;
+    const start = new Date(video.uploadedAt);
+    start.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      if (video.releaseDays.includes(d.getDay())) return d;
+    }
+    return start;
+  }
+
+  function isReleased(video) {
+    const releaseDate = getReleaseDate(video);
+    if (!releaseDate) return true;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today >= releaseDate;
   }
 
   async function renderIntroVideo() {
-    const isAdmin = currentUser && currentUser.role === "admin";
+    const session = getSession();
+    const isAdmin = session && session.role === "admin";
     const area = document.getElementById("introVideoArea");
     const adminControls = document.getElementById("introVideoAdmin");
     const removeBtn = document.getElementById("introVideoRemoveBtn");
-    const { data } = await supabase.from("site_settings").select("value").eq("key", "intro_video_path").single();
-    const path = data ? data.value : null;
+    const record = await getIntroVideo();
 
     area.innerHTML = "";
-    if (path) {
-      const { data: pub } = supabase.storage.from("intro-video").getPublicUrl(path);
+    if (record && record.blob) {
       const video = document.createElement("video");
-      video.src = pub.publicUrl;
+      video.src = URL.createObjectURL(record.blob);
       video.controls = true;
       video.preload = "metadata";
       area.appendChild(video);
@@ -929,16 +951,10 @@
   }
 
   async function renderLibrary() {
-    const isAdmin = currentUser && currentUser.role === "admin";
-    const { data: videos, error } = await supabase.from("videos").select("*").order("uploaded_at", { ascending: false });
-    if (error) {
-      videoGrid.innerHTML = "";
-      countHint.textContent = "";
-      emptyState.hidden = false;
-      emptyState.textContent = "Couldn't load videos: " + error.message;
-      return;
-    }
-    emptyState.textContent = "No videos yet. Check back soon.";
+    const session = getSession();
+    const isAdmin = session && session.role === "admin";
+    const allVideos = await getAllVideos();
+    const videos = isAdmin ? allVideos : allVideos.filter(isReleased);
 
     countHint.textContent = videos.length
       ? `${videos.length} video${videos.length === 1 ? "" : "s"}`
@@ -948,12 +964,12 @@
 
     videos.forEach((v) => {
       const released = isReleased(v);
-      const { data: pub } = supabase.storage.from("videos").getPublicUrl(v.storage_path);
+      const url = URL.createObjectURL(v.blob);
       const card = document.createElement("div");
       card.className = "card";
 
       const video = document.createElement("video");
-      video.src = pub.publicUrl;
+      video.src = url;
       video.controls = true;
       video.preload = "metadata";
       card.appendChild(video);
@@ -977,17 +993,16 @@
 
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = `Uploaded ${formatDate(v.uploaded_at)}`;
+      meta.textContent = `Uploaded ${formatDate(v.uploadedAt)}`;
       body.appendChild(meta);
 
-      if (v.release_days && v.release_days.length > 0) {
-        const dayLabels = v.release_days.slice().sort().map((d) => DAY_NAMES[d]).join(", ");
-        const releaseTime = parseDateOnly(v.release_date).getTime();
+      if (v.releaseDays && v.releaseDays.length > 0) {
+        const dayLabels = v.releaseDays.slice().sort().map((d) => DAY_NAMES[d]).join(", ");
         const scheduleMeta = document.createElement("div");
         scheduleMeta.className = "meta";
         scheduleMeta.textContent = released
-          ? `Released ${formatDate(releaseTime)} (scheduled: ${dayLabels})`
-          : `Releases ${formatDate(releaseTime)} (${dayLabels}) — visible to everyone from then on`;
+          ? `Released ${formatDate(getReleaseDate(v).getTime())} (scheduled: ${dayLabels})`
+          : `Releases ${formatDate(getReleaseDate(v).getTime())} (${dayLabels}) — visible to everyone from then on`;
         body.appendChild(scheduleMeta);
       }
 
@@ -999,7 +1014,7 @@
         releaseNowBtn.className = "btn-ghost";
         releaseNowBtn.textContent = "Release now";
         armConfirmButton(releaseNowBtn, async () => {
-          await supabase.from("videos").update({ release_days: [], release_date: null }).eq("id", v.id);
+          await clearVideoSchedule(v.id);
           await renderLibrary();
         });
         row.appendChild(releaseNowBtn);
@@ -1008,8 +1023,7 @@
         delBtn.className = "btn-danger";
         delBtn.textContent = "Delete";
         armConfirmButton(delBtn, async () => {
-          await supabase.from("videos").delete().eq("id", v.id);
-          await supabase.storage.from("videos").remove([v.storage_path]);
+          await deleteVideo(v.id);
           await renderLibrary();
         });
         row.appendChild(delBtn);
@@ -1021,16 +1035,13 @@
     });
   }
 
-  async function renderReviews() {
-    const { data: reviews, error } = await supabase.from("reviews").select("*").order("created_at", { ascending: false });
-    if (error) {
-      reviewList.innerHTML = "";
-      reviewCountHint.textContent = "";
-      reviewEmpty.hidden = false;
-      reviewEmpty.textContent = "Couldn't load reviews: " + error.message;
-      return;
-    }
-    reviewEmpty.textContent = "No reviews yet. Be the first to write one.";
+  function deleteReview(id) {
+    saveReviews(getReviews().filter((r) => r.id !== id));
+  }
+
+  function renderReviews() {
+    const session = getSession();
+    const reviews = getReviews().sort((a, b) => b.date - a.date);
 
     reviewCountHint.textContent = reviews.length
       ? `${reviews.length} review${reviews.length === 1 ? "" : "s"}`
@@ -1047,12 +1058,12 @@
 
       const name = document.createElement("span");
       name.className = "review-name";
-      name.textContent = r.username;
+      name.textContent = r.name;
       head.appendChild(name);
 
       const date = document.createElement("span");
       date.className = "review-date";
-      date.textContent = formatDate(r.created_at);
+      date.textContent = formatDate(r.date);
       head.appendChild(date);
 
       card.appendChild(head);
@@ -1062,16 +1073,15 @@
       text.textContent = r.text;
       card.appendChild(text);
 
-      const canDelete = currentUser && (currentUser.username === r.username || currentUser.role === "admin");
-      if (canDelete) {
+      if (session && session.name === r.name) {
         const actions = document.createElement("div");
         actions.className = "review-actions";
         const delBtn = document.createElement("button");
         delBtn.className = "btn-danger";
         delBtn.textContent = "Delete";
-        armConfirmButton(delBtn, async () => {
-          await supabase.from("reviews").delete().eq("id", r.id);
-          await renderReviews();
+        armConfirmButton(delBtn, () => {
+          deleteReview(r.id);
+          renderReviews();
         });
         actions.appendChild(delBtn);
         card.appendChild(actions);
@@ -1081,65 +1091,10 @@
     });
   }
 
-  async function renderUsers() {
-    if (!currentUser || currentUser.role !== "admin") {
-      manageUsersSection.hidden = true;
-      return;
-    }
-    manageUsersSection.hidden = false;
-
-    const { data: users, error } = await supabase.from("profiles").select("username, blocked").eq("is_admin", false);
-    if (error) {
-      userList.innerHTML = "";
-      userListEmpty.hidden = false;
-      userListEmpty.textContent = "Couldn't load viewers: " + error.message;
-      return;
-    }
-    userListEmpty.textContent = "No viewer accounts yet.";
-    userListEmpty.hidden = users.length !== 0;
-    userList.innerHTML = "";
-
-    users.forEach((u) => {
-      const row = document.createElement("div");
-      row.className = "user-row";
-
-      const nameBox = document.createElement("div");
-      nameBox.className = "user-name";
-      const name = document.createElement("span");
-      name.textContent = u.username;
-      nameBox.appendChild(name);
-      if (u.blocked) {
-        const pill = document.createElement("span");
-        pill.className = "pill";
-        pill.textContent = "Blocked";
-        nameBox.appendChild(pill);
-      }
-      row.appendChild(nameBox);
-
-      const btn = document.createElement("button");
-      if (u.blocked) {
-        btn.className = "btn-ghost";
-        btn.textContent = "Unblock";
-        btn.addEventListener("click", async () => {
-          await supabase.from("profiles").update({ blocked: false }).eq("username", u.username);
-          await renderUsers();
-        });
-      } else {
-        btn.className = "btn-danger";
-        btn.textContent = "Block";
-        armConfirmButton(btn, async () => {
-          await supabase.from("profiles").update({ blocked: true }).eq("username", u.username);
-          await renderUsers();
-        });
-      }
-      row.appendChild(btn);
-
-      userList.appendChild(row);
-    });
-  }
-
   async function render() {
-    if (!currentUser) {
+    const session = getSession();
+
+    if (!session) {
       authScreen.hidden = false;
       mainScreen.hidden = true;
       whoBox.hidden = true;
@@ -1151,38 +1106,23 @@
     mainScreen.hidden = false;
     whoBox.hidden = false;
 
-    const isAdmin = currentUser.role === "admin";
+    const isAdmin = session.role === "admin";
     whoLabel.innerHTML = isAdmin
-      ? `${currentUser.username} <span class="pill">Admin</span>`
-      : `${currentUser.username} <span class="pill">Free member</span>`;
+      ? `${session.name} <span class="pill">Admin</span>`
+      : `${session.name} <span class="pill">Free member</span>`;
     uploadPanel.hidden = !isAdmin;
 
     introEditRow.hidden = !isAdmin;
     introTextEditor.hidden = true;
     introTextDisplay.hidden = false;
-    await renderIntroText();
+    renderIntroText();
 
     await renderIntroVideo();
-    await renderUsers();
     await renderLibrary();
-    await renderReviews();
+    renderReviews();
   }
 
-  async function init() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      const profile = await loadProfile(session.user.id);
-      if (profile && !profile.blocked) {
-        currentUser = profile;
-      } else {
-        await supabase.auth.signOut();
-        currentUser = null;
-      }
-    }
-    render();
-  }
-
-  init();
+  render();
 })();
 </script>
 </body>
