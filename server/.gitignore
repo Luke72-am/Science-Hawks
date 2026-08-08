@@ -1,6 +1,0 @@
-node_modules/
-data/db.json
-uploads/videos/*
-uploads/intro/*
-!uploads/videos/.gitkeep
-!uploads/intro/.gitkeep

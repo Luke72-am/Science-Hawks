@@ -527,18 +527,29 @@
   </div>
 
   <div class="disclosure">
-    Science Hound is backed by a local server. Accounts, videos, and reviews are stored server-side
-    (passwords are hashed, never stored in plain text), so everyone connecting to this server sees the
-    same library, from any device. This is a basic local setup, not a hosted production service, so it
-    only runs while the server is running. Reviews are automatically filtered for offensive language.
+    Science Hound is backed by Supabase — accounts, videos, and reviews are stored securely in the
+    cloud, always available regardless of whether any particular device is on. Reviews are
+    automatically filtered for offensive language.
   </div>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (function () {
   "use strict";
 
-  let currentUser = null;
+  const SUPABASE_URL = "https://ywwhwfkntegwlbvdiyxm.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_hkmsnOpdDxmzvRYxz2BRPw_GRXvUh8c";
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const ADMIN_USERNAME = "Luke";
+  const EMAIL_DOMAIN = "scihound.local";
+
+  let currentUser = null; // { id, username, role: 'admin' | 'viewer' }
+
+  function usernameToEmail(username) {
+    return `${username.toLowerCase()}@${EMAIL_DOMAIN}`;
+  }
 
   // Two-click confirm (window.confirm() is blocked in sandboxed frames)
   function armConfirmButton(btn, onConfirm) {
@@ -562,22 +573,6 @@
     });
   }
 
-  // ---------- Backend API ----------
-  async function api(path, { method = "GET", json, form } = {}) {
-    const opts = { method, credentials: "same-origin" };
-    if (json !== undefined) {
-      opts.headers = { "Content-Type": "application/json" };
-      opts.body = JSON.stringify(json);
-    } else if (form !== undefined) {
-      opts.body = form;
-    }
-    const res = await fetch(path, opts);
-    let data = {};
-    try { data = await res.json(); } catch (e) { /* no body */ }
-    if (!res.ok) throw new Error(data.error || "Something went wrong.");
-    return data;
-  }
-
   function escapeHtml(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
@@ -589,8 +584,40 @@
   function formatDate(ts) {
     return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  function todayDateString() {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+  function toDateString(d) {
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+  function parseDateOnly(dateStr) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  function safeStorageName(originalName) {
+    const dot = originalName.lastIndexOf(".");
+    const ext = dot > -1 ? originalName.slice(dot) : "";
+    return `${crypto.randomUUID()}${ext}`;
+  }
 
   const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  function computeReleaseDate(uploadedAtMs, releaseDays) {
+    if (!releaseDays || releaseDays.length === 0) return null;
+    const start = new Date(uploadedAtMs);
+    start.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      if (releaseDays.includes(d.getDay())) return d;
+    }
+    return start;
+  }
+  function isReleased(v) {
+    return !v.release_date || v.release_date <= todayDateString();
+  }
 
   // ---------- Elements ----------
   const authScreen = document.getElementById("authScreen");
@@ -638,6 +665,12 @@
   tabLogIn.addEventListener("click", showLogIn);
   tabSignUp.addEventListener("click", showSignUp);
 
+  async function loadProfile(userId) {
+    const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    if (error || !data) return null;
+    return { id: userId, username: data.username, role: data.is_admin ? "admin" : "viewer", blocked: data.blocked };
+  }
+
   document.getElementById("signInSubmit").addEventListener("click", async () => {
     const user = document.getElementById("signInUser").value.trim();
     const pass = document.getElementById("signInPass").value;
@@ -647,14 +680,28 @@
       errorEl.textContent = "Please enter a username and password.";
       return;
     }
-    try {
-      const data = await api("/api/login", { method: "POST", json: { username: user, password: pass } });
-      errorEl.textContent = "";
-      currentUser = data.user;
-      render();
-    } catch (e) {
-      errorEl.textContent = e.message;
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: usernameToEmail(user),
+      password: pass
+    });
+    if (error) {
+      errorEl.textContent = "Incorrect username or password.";
+      return;
     }
+    const profile = await loadProfile(data.user.id);
+    if (!profile) {
+      errorEl.textContent = "Something went wrong loading your account.";
+      await supabase.auth.signOut();
+      return;
+    }
+    if (profile.blocked) {
+      errorEl.textContent = "This account has been blocked.";
+      await supabase.auth.signOut();
+      return;
+    }
+    errorEl.textContent = "";
+    currentUser = profile;
+    render();
   });
 
   document.getElementById("signUpSubmit").addEventListener("click", async () => {
@@ -671,18 +718,34 @@
       errorEl.textContent = "Passwords don't match.";
       return;
     }
-    try {
-      const data = await api("/api/signup", { method: "POST", json: { username: user, password: pass } });
-      errorEl.textContent = "";
-      currentUser = data.user;
-      render();
-    } catch (e) {
-      errorEl.textContent = e.message;
+    if (pass.length < 6) {
+      errorEl.textContent = "Password must be at least 6 characters.";
+      return;
     }
+    const { data, error } = await supabase.auth.signUp({
+      email: usernameToEmail(user),
+      password: pass,
+      options: { data: { username: user } }
+    });
+    if (error) {
+      errorEl.textContent = /registered/i.test(error.message)
+        ? "That username is already taken."
+        : error.message;
+      return;
+    }
+    if (!data.session) {
+      errorEl.textContent = "Account created — please log in.";
+      showLogIn();
+      return;
+    }
+    const profile = await loadProfile(data.user.id);
+    errorEl.textContent = "";
+    currentUser = profile;
+    render();
   });
 
   document.getElementById("signOutBtn").addEventListener("click", async () => {
-    await api("/api/logout", { method: "POST" });
+    await supabase.auth.signOut();
     currentUser = null;
     render();
   });
@@ -703,21 +766,32 @@
       .filter((cb) => cb.checked)
       .map((cb) => parseInt(cb.value, 10));
 
-    const form = new FormData();
-    form.append("title", title);
-    form.append("video", file);
-    form.append("releaseDays", JSON.stringify(releaseDays));
-
-    try {
-      await api("/api/videos", { method: "POST", form });
-      errorEl.textContent = "";
-      titleInput.value = "";
-      fileInput.value = "";
-      dayCheckboxes.forEach((cb) => { cb.checked = false; });
-      await renderLibrary();
-    } catch (e) {
-      errorEl.textContent = e.message;
+    const storagePath = safeStorageName(file.name);
+    const { error: upErr } = await supabase.storage.from("videos").upload(storagePath, file);
+    if (upErr) {
+      errorEl.textContent = upErr.message;
+      return;
     }
+
+    const uploadedAt = new Date();
+    const releaseDateObj = computeReleaseDate(uploadedAt.getTime(), releaseDays);
+    const { error: insErr } = await supabase.from("videos").insert({
+      title,
+      storage_path: storagePath,
+      uploaded_at: uploadedAt.toISOString(),
+      release_days: releaseDays,
+      release_date: releaseDateObj ? toDateString(releaseDateObj) : null
+    });
+    if (insErr) {
+      errorEl.textContent = insErr.message;
+      return;
+    }
+
+    errorEl.textContent = "";
+    titleInput.value = "";
+    fileInput.value = "";
+    dayCheckboxes.forEach((cb) => { cb.checked = false; });
+    await renderLibrary();
   });
 
   document.getElementById("introVideoUploadBtn").addEventListener("click", async () => {
@@ -729,27 +803,39 @@
       errorEl.textContent = "Please choose a video file.";
       return;
     }
-    const form = new FormData();
-    form.append("video", file);
 
-    try {
-      await api("/api/intro-video", { method: "POST", form });
-      errorEl.textContent = "";
-      fileInput.value = "";
-      await renderIntroVideo();
-    } catch (e) {
-      errorEl.textContent = e.message;
+    const { data: current } = await supabase.from("site_settings").select("value").eq("key", "intro_video_path").single();
+    const storagePath = safeStorageName(file.name);
+    const { error: upErr } = await supabase.storage.from("intro-video").upload(storagePath, file);
+    if (upErr) {
+      errorEl.textContent = upErr.message;
+      return;
     }
+    const { error: updErr } = await supabase.from("site_settings").update({ value: storagePath }).eq("key", "intro_video_path");
+    if (updErr) {
+      errorEl.textContent = updErr.message;
+      return;
+    }
+    if (current && current.value) {
+      await supabase.storage.from("intro-video").remove([current.value]);
+    }
+    errorEl.textContent = "";
+    fileInput.value = "";
+    await renderIntroVideo();
   });
 
   armConfirmButton(document.getElementById("introVideoRemoveBtn"), async () => {
-    await api("/api/intro-video", { method: "DELETE" });
+    const { data: current } = await supabase.from("site_settings").select("value").eq("key", "intro_video_path").single();
+    await supabase.from("site_settings").update({ value: null }).eq("key", "intro_video_path");
+    if (current && current.value) {
+      await supabase.storage.from("intro-video").remove([current.value]);
+    }
     await renderIntroVideo();
   });
 
   document.getElementById("introEditBtn").addEventListener("click", async () => {
-    const { text } = await api("/api/intro");
-    introTextInput.value = text;
+    const { data } = await supabase.from("site_settings").select("value").eq("key", "intro_text").single();
+    introTextInput.value = data ? data.value : "";
     introTextError.textContent = "";
     introTextDisplay.hidden = true;
     introEditRow.hidden = true;
@@ -768,16 +854,16 @@
       introTextError.textContent = "Description can't be empty.";
       return;
     }
-    try {
-      await api("/api/intro", { method: "PUT", json: { text: value } });
-      introTextError.textContent = "";
-      introTextEditor.hidden = true;
-      introTextDisplay.hidden = false;
-      introEditRow.hidden = false;
-      await renderIntroText();
-    } catch (e) {
-      introTextError.textContent = e.message;
+    const { error } = await supabase.from("site_settings").update({ value }).eq("key", "intro_text");
+    if (error) {
+      introTextError.textContent = error.message;
+      return;
     }
+    introTextError.textContent = "";
+    introTextEditor.hidden = true;
+    introTextDisplay.hidden = false;
+    introEditRow.hidden = false;
+    await renderIntroText();
   });
 
   document.getElementById("reviewSubmit").addEventListener("click", async () => {
@@ -786,18 +872,23 @@
       reviewError.textContent = "Please write a review before posting.";
       return;
     }
-    try {
-      await api("/api/reviews", { method: "POST", json: { text } });
-      reviewError.textContent = "";
-      reviewText.value = "";
-      await renderReviews();
-    } catch (e) {
-      reviewError.textContent = e.message;
+    const { error } = await supabase.from("reviews").insert({
+      user_id: currentUser.id,
+      username: currentUser.username,
+      text
+    });
+    if (error) {
+      reviewError.textContent = error.message;
+      return;
     }
+    reviewError.textContent = "";
+    reviewText.value = "";
+    await renderReviews();
   });
 
   async function renderIntroText() {
-    const { text } = await api("/api/intro");
+    const { data } = await supabase.from("site_settings").select("value").eq("key", "intro_text").single();
+    const text = data ? data.value : "";
     introTextDisplay.innerHTML = "";
     text.split(/\n{2,}/).forEach((paragraph) => {
       const trimmed = paragraph.trim();
@@ -814,12 +905,14 @@
     const area = document.getElementById("introVideoArea");
     const adminControls = document.getElementById("introVideoAdmin");
     const removeBtn = document.getElementById("introVideoRemoveBtn");
-    const { url } = await api("/api/intro-video");
+    const { data } = await supabase.from("site_settings").select("value").eq("key", "intro_video_path").single();
+    const path = data ? data.value : null;
 
     area.innerHTML = "";
-    if (url) {
+    if (path) {
+      const { data: pub } = supabase.storage.from("intro-video").getPublicUrl(path);
       const video = document.createElement("video");
-      video.src = url;
+      video.src = pub.publicUrl;
       video.controls = true;
       video.preload = "metadata";
       area.appendChild(video);
@@ -837,7 +930,15 @@
 
   async function renderLibrary() {
     const isAdmin = currentUser && currentUser.role === "admin";
-    const { videos } = await api("/api/videos");
+    const { data: videos, error } = await supabase.from("videos").select("*").order("uploaded_at", { ascending: false });
+    if (error) {
+      videoGrid.innerHTML = "";
+      countHint.textContent = "";
+      emptyState.hidden = false;
+      emptyState.textContent = "Couldn't load videos: " + error.message;
+      return;
+    }
+    emptyState.textContent = "No videos yet. Check back soon.";
 
     countHint.textContent = videos.length
       ? `${videos.length} video${videos.length === 1 ? "" : "s"}`
@@ -846,12 +947,13 @@
     videoGrid.innerHTML = "";
 
     videos.forEach((v) => {
-      const released = v.released;
+      const released = isReleased(v);
+      const { data: pub } = supabase.storage.from("videos").getPublicUrl(v.storage_path);
       const card = document.createElement("div");
       card.className = "card";
 
       const video = document.createElement("video");
-      video.src = v.url;
+      video.src = pub.publicUrl;
       video.controls = true;
       video.preload = "metadata";
       card.appendChild(video);
@@ -875,12 +977,12 @@
 
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = `Uploaded ${formatDate(v.uploadedAt)}`;
+      meta.textContent = `Uploaded ${formatDate(v.uploaded_at)}`;
       body.appendChild(meta);
 
-      if (v.releaseDays && v.releaseDays.length > 0) {
-        const dayLabels = v.releaseDays.slice().sort().map((d) => DAY_NAMES[d]).join(", ");
-        const releaseTime = new Date(v.releaseDate).getTime();
+      if (v.release_days && v.release_days.length > 0) {
+        const dayLabels = v.release_days.slice().sort().map((d) => DAY_NAMES[d]).join(", ");
+        const releaseTime = parseDateOnly(v.release_date).getTime();
         const scheduleMeta = document.createElement("div");
         scheduleMeta.className = "meta";
         scheduleMeta.textContent = released
@@ -897,7 +999,7 @@
         releaseNowBtn.className = "btn-ghost";
         releaseNowBtn.textContent = "Release now";
         armConfirmButton(releaseNowBtn, async () => {
-          await api(`/api/videos/${v.id}/release-now`, { method: "POST" });
+          await supabase.from("videos").update({ release_days: [], release_date: null }).eq("id", v.id);
           await renderLibrary();
         });
         row.appendChild(releaseNowBtn);
@@ -906,7 +1008,8 @@
         delBtn.className = "btn-danger";
         delBtn.textContent = "Delete";
         armConfirmButton(delBtn, async () => {
-          await api(`/api/videos/${v.id}`, { method: "DELETE" });
+          await supabase.from("videos").delete().eq("id", v.id);
+          await supabase.storage.from("videos").remove([v.storage_path]);
           await renderLibrary();
         });
         row.appendChild(delBtn);
@@ -919,7 +1022,15 @@
   }
 
   async function renderReviews() {
-    const { reviews } = await api("/api/reviews");
+    const { data: reviews, error } = await supabase.from("reviews").select("*").order("created_at", { ascending: false });
+    if (error) {
+      reviewList.innerHTML = "";
+      reviewCountHint.textContent = "";
+      reviewEmpty.hidden = false;
+      reviewEmpty.textContent = "Couldn't load reviews: " + error.message;
+      return;
+    }
+    reviewEmpty.textContent = "No reviews yet. Be the first to write one.";
 
     reviewCountHint.textContent = reviews.length
       ? `${reviews.length} review${reviews.length === 1 ? "" : "s"}`
@@ -941,7 +1052,7 @@
 
       const date = document.createElement("span");
       date.className = "review-date";
-      date.textContent = formatDate(r.date);
+      date.textContent = formatDate(r.created_at);
       head.appendChild(date);
 
       card.appendChild(head);
@@ -959,7 +1070,7 @@
         delBtn.className = "btn-danger";
         delBtn.textContent = "Delete";
         armConfirmButton(delBtn, async () => {
-          await api(`/api/reviews/${r.id}`, { method: "DELETE" });
+          await supabase.from("reviews").delete().eq("id", r.id);
           await renderReviews();
         });
         actions.appendChild(delBtn);
@@ -977,7 +1088,14 @@
     }
     manageUsersSection.hidden = false;
 
-    const { users } = await api("/api/users");
+    const { data: users, error } = await supabase.from("profiles").select("username, blocked").eq("is_admin", false);
+    if (error) {
+      userList.innerHTML = "";
+      userListEmpty.hidden = false;
+      userListEmpty.textContent = "Couldn't load viewers: " + error.message;
+      return;
+    }
+    userListEmpty.textContent = "No viewer accounts yet.";
     userListEmpty.hidden = users.length !== 0;
     userList.innerHTML = "";
 
@@ -1003,14 +1121,14 @@
         btn.className = "btn-ghost";
         btn.textContent = "Unblock";
         btn.addEventListener("click", async () => {
-          await api(`/api/users/${encodeURIComponent(u.username)}/unblock`, { method: "POST" });
+          await supabase.from("profiles").update({ blocked: false }).eq("username", u.username);
           await renderUsers();
         });
       } else {
         btn.className = "btn-danger";
         btn.textContent = "Block";
         armConfirmButton(btn, async () => {
-          await api(`/api/users/${encodeURIComponent(u.username)}/block`, { method: "POST" });
+          await supabase.from("profiles").update({ blocked: true }).eq("username", u.username);
           await renderUsers();
         });
       }
@@ -1051,11 +1169,15 @@
   }
 
   async function init() {
-    try {
-      const data = await api("/api/session");
-      currentUser = data.user;
-    } catch (e) {
-      currentUser = null;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      const profile = await loadProfile(session.user.id);
+      if (profile && !profile.blocked) {
+        currentUser = profile;
+      } else {
+        await supabase.auth.signOut();
+        currentUser = null;
+      }
     }
     render();
   }
