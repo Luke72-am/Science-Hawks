@@ -106,8 +106,17 @@ app.use(
   })
 );
 
+function isBlocked(username) {
+  const record = db.users[username];
+  return !!(record && record.blocked);
+}
+
 function requireAuth(req, res, next) {
   if (!req.session.user) return res.status(401).json({ error: "Not signed in." });
+  if (req.session.user.role === "viewer" && isBlocked(req.session.user.username)) {
+    req.session.destroy(() => {});
+    return res.status(403).json({ error: "This account has been blocked." });
+  }
   next();
 }
 function requireAdmin(req, res, next) {
@@ -119,6 +128,10 @@ function requireAdmin(req, res, next) {
 
 // ---------- Auth ----------
 app.get("/api/session", (req, res) => {
+  if (req.session.user && req.session.user.role === "viewer" && isBlocked(req.session.user.username)) {
+    req.session.destroy(() => res.json({ user: null }));
+    return;
+  }
   res.json({ user: req.session.user || null });
 });
 
@@ -134,7 +147,7 @@ app.post("/api/signup", async (req, res) => {
     return res.status(400).json({ error: "That username is already taken." });
   }
   const passwordHash = await bcrypt.hash(password, 10);
-  db.users[username] = { username, passwordHash };
+  db.users[username] = { username, passwordHash, blocked: false };
   saveDb();
   req.session.user = { username, role: "viewer" };
   res.status(201).json({ user: req.session.user });
@@ -152,6 +165,9 @@ app.post("/api/login", async (req, res) => {
   const record = db.users[username];
   if (!record || !(await bcrypt.compare(password, record.passwordHash))) {
     return res.status(401).json({ error: "Incorrect username or password." });
+  }
+  if (record.blocked) {
+    return res.status(403).json({ error: "This account has been blocked." });
   }
   req.session.user = { username, role: "viewer" };
   res.json({ user: req.session.user });
@@ -246,12 +262,36 @@ app.post("/api/reviews", requireAuth, (req, res) => {
 app.delete("/api/reviews/:id", requireAuth, (req, res) => {
   const review = db.reviews.find((r) => r.id === req.params.id);
   if (!review) return res.status(404).json({ error: "Review not found." });
-  if (review.username !== req.session.user.username) {
+  const isOwner = review.username === req.session.user.username;
+  const isAdmin = req.session.user.role === "admin";
+  if (!isOwner && !isAdmin) {
     return res.status(403).json({ error: "You can only delete your own review." });
   }
   db.reviews = db.reviews.filter((r) => r.id !== review.id);
   saveDb();
   res.json({});
+});
+
+// ---------- Users (admin moderation) ----------
+app.get("/api/users", requireAdmin, (req, res) => {
+  const users = Object.values(db.users).map((u) => ({ username: u.username, blocked: !!u.blocked }));
+  res.json({ users });
+});
+
+app.post("/api/users/:username/block", requireAdmin, (req, res) => {
+  const record = db.users[req.params.username];
+  if (!record) return res.status(404).json({ error: "User not found." });
+  record.blocked = true;
+  saveDb();
+  res.json({ username: record.username, blocked: true });
+});
+
+app.post("/api/users/:username/unblock", requireAdmin, (req, res) => {
+  const record = db.users[req.params.username];
+  if (!record) return res.status(404).json({ error: "User not found." });
+  record.blocked = false;
+  saveDb();
+  res.json({ username: record.username, blocked: false });
 });
 
 // ---------- Intro text ----------

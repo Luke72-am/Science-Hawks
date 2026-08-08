@@ -309,6 +309,22 @@
     border-radius: 12px;
   }
 
+  /* ---------- Manage viewers ---------- */
+  .manage-users-section { margin-bottom: 40px; }
+  .user-list { display: flex; flex-direction: column; gap: 8px; }
+  .user-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .user-row .user-name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .user-row button { padding: 6px 12px; font-size: 0.85rem; }
+
   /* ---------- Reviews ---------- */
   .reviews-section { margin-top: 44px; }
   .review-form {
@@ -478,6 +494,14 @@
   </div>
   <div class="error-msg" id="uploadError"></div>
 
+  <div class="manage-users-section" id="manageUsersSection" hidden>
+    <div class="section-head">
+      <h2>Manage viewers</h2>
+    </div>
+    <div class="user-list" id="userList"></div>
+    <div class="empty" id="userListEmpty" hidden>No viewer accounts yet.</div>
+  </div>
+
   <div class="section-head">
     <h2>Video library</h2>
     <span class="hint" id="countHint"></span>
@@ -577,6 +601,10 @@
   const videoGrid = document.getElementById("videoGrid");
   const emptyState = document.getElementById("emptyState");
   const countHint = document.getElementById("countHint");
+
+  const manageUsersSection = document.getElementById("manageUsersSection");
+  const userList = document.getElementById("userList");
+  const userListEmpty = document.getElementById("userListEmpty");
 
   const reviewList = document.getElementById("reviewList");
   const reviewEmpty = document.getElementById("reviewEmpty");
@@ -923,7 +951,8 @@
       text.textContent = r.text;
       card.appendChild(text);
 
-      if (currentUser && currentUser.username === r.username) {
+      const canDelete = currentUser && (currentUser.username === r.username || currentUser.role === "admin");
+      if (canDelete) {
         const actions = document.createElement("div");
         actions.className = "review-actions";
         const delBtn = document.createElement("button");
@@ -938,6 +967,56 @@
       }
 
       reviewList.appendChild(card);
+    });
+  }
+
+  async function renderUsers() {
+    if (!currentUser || currentUser.role !== "admin") {
+      manageUsersSection.hidden = true;
+      return;
+    }
+    manageUsersSection.hidden = false;
+
+    const { users } = await api("/api/users");
+    userListEmpty.hidden = users.length !== 0;
+    userList.innerHTML = "";
+
+    users.forEach((u) => {
+      const row = document.createElement("div");
+      row.className = "user-row";
+
+      const nameBox = document.createElement("div");
+      nameBox.className = "user-name";
+      const name = document.createElement("span");
+      name.textContent = u.username;
+      nameBox.appendChild(name);
+      if (u.blocked) {
+        const pill = document.createElement("span");
+        pill.className = "pill";
+        pill.textContent = "Blocked";
+        nameBox.appendChild(pill);
+      }
+      row.appendChild(nameBox);
+
+      const btn = document.createElement("button");
+      if (u.blocked) {
+        btn.className = "btn-ghost";
+        btn.textContent = "Unblock";
+        btn.addEventListener("click", async () => {
+          await api(`/api/users/${encodeURIComponent(u.username)}/unblock`, { method: "POST" });
+          await renderUsers();
+        });
+      } else {
+        btn.className = "btn-danger";
+        btn.textContent = "Block";
+        armConfirmButton(btn, async () => {
+          await api(`/api/users/${encodeURIComponent(u.username)}/block`, { method: "POST" });
+          await renderUsers();
+        });
+      }
+      row.appendChild(btn);
+
+      userList.appendChild(row);
     });
   }
 
@@ -966,6 +1045,7 @@
     await renderIntroText();
 
     await renderIntroVideo();
+    await renderUsers();
     await renderLibrary();
     await renderReviews();
   }
